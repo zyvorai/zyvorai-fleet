@@ -1,3 +1,5 @@
+<div align="center">
+
 # Fleet
 
 [![CI](https://github.com/zyvorai/zyvorai-fleet/actions/workflows/ci.yml/badge.svg)](https://github.com/zyvorai/zyvorai-fleet/actions/workflows/ci.yml)
@@ -5,16 +7,23 @@
 [![Go](https://img.shields.io/badge/Go-1.27%2B-00ADD8.svg)](go.mod)
 [![Version](https://img.shields.io/badge/version-0.3-informational)](docs/PRODUCT_PLAN.md)
 
+[![Book a demo](https://img.shields.io/badge/Book_a_demo-0071e3?style=for-the-badge)](https://zyvor.dev/schedule?utm_source=github&utm_medium=fleet&utm_campaign=readme_hero)
+[![30-day PoC](https://img.shields.io/badge/30--day_PoC-000000?style=for-the-badge)](https://zyvor.dev/poc?utm_source=github&utm_medium=fleet&utm_campaign=readme_hero)
+[![Quickstart](https://img.shields.io/badge/Quickstart_one_Go_build-ffb340?style=for-the-badge)](#quickstart)
+
 ![Fleet — every site still running](docs/social/fleet-hero-dark.jpg)
 
-**Every site. Still running.**
+### Every site. Still running.
 
-[![Book a demo](https://img.shields.io/badge/Book_a_demo-0071e3?style=for-the-badge)](https://zyvor.dev/schedule?utm_source=github&utm_medium=fleet&utm_campaign=readme_hero)
-[![30-day PoC](https://img.shields.io/badge/30--day_PoC-1d1d1f?style=for-the-badge)](https://zyvor.dev/poc?utm_source=github&utm_medium=fleet&utm_campaign=readme_hero)
+**Offline-first edge fleet control plane for Linux, Kubernetes, containers and virtual machines.** The control plane declares what should run. A small `fleet-agent` pulls that desired state, caches the complete revision locally, and keeps reconciling it when the WAN disappears — with no arbitrary remote shell.
+
+**Keeps reconciling offline** · **4 typed runtime adapters** · **No inbound port on the site** · **0 Go dependencies** · **Strict wave rollouts**
 
 📖 **[Read the full docs](https://zyvorai.github.io/zyvorai-fleet/)** — tutorial, deployment, runtime adapters, and production runbooks.
 
-Offline-first edge fleet control plane for Linux, Kubernetes, containers and virtual machines. The control plane declares what should run. A small `fleet-agent` pulls that desired state, caches the complete revision locally, and keeps reconciling it when the WAN disappears — with no arbitrary remote shell.
+</div>
+
+---
 
 ```text
                        ZYVOR FLEET CONTROL PLANE
@@ -33,60 +42,31 @@ Offline-first edge fleet control plane for Linux, Kubernetes, containers and vir
         WAN down? Each agent continues from its cached desired revision.
 ```
 
-## Contents
+## What's new
 
-- [Why this is a separate Zyvor product](#why-this-is-a-separate-zyvor-product)
-- [Is this for you?](#is-this-for-you)
-- [Capabilities](#capabilities)
-- [Quick start](#quick-start)
-- [Desired-state example](#desired-state-example)
-- [Offline autonomy](#offline-autonomy)
-- [Architecture](#architecture)
-- [Kubernetes](#kubernetes)
-- [Security](#security)
-- [Documentation](#documentation)
-- [License](#license)
+| Release | What landed |
+|---|---|
+| **Unreleased** | OTA devices roll out in canary waves instead of a single assignment, pausing when failure, rollback or offline thresholds trip, with a per-device timeline and recovery guidance |
+| **Unreleased** | `fleetctl status`: logo, site and rollout health, feature rows; `fleetctl status json` for the raw dashboard |
+| **Unreleased** | HA design doc and a short soak CI harness proving single-writer reconnect under WAN and disk pressure (not multi-writer HA) |
+| **0.3.0** | Zyvor OTA contract: `/v1/devices/{device_id}/assignment` and `/events` with digest-bound device tokens |
+| **0.3.0** | Site cordons, scoped API tokens, HMAC-SHA256 signed webhooks and a bounded mutation audit trail |
+| **0.3.0** | State backup/restore drills, `make qualify`, and Cosign-signed release `SHA256SUMS` |
 
-## Why this is a separate Zyvor product
+Full history: [CHANGELOG.md](CHANGELOG.md).
 
-Zyvor already has strong point products. Fleet is the **site lifecycle and desired-state layer** that connects them.
+## Why Fleet
 
-| Product | Owns | Fleet relationship |
-|---|---|---|
-| **Nodra** | MQTT/HTTP edge ingress, store-and-forward, twins, local routes | Optional edge-data plane |
-| **Zyvor Relay** | Durable operational action/ack/verify workflow | Optional action bus |
-| **PacketWolf** | eBPF network intelligence | Optional network health/policy evidence |
-| **Argus** | Application assurance | Optional post-rollout verification |
-| **Forge** | GPU/inference operations | Optional edge AI plane |
-| **HyperCluster** | Kubernetes cluster lifecycle | Fleet can coordinate site-level promotion |
-| **IronWolf** | Bare-metal lifecycle | Fleet can represent/target the resulting sites |
-| **Zeus OS / Machina** | VM operations | Fleet handles cross-site desired-state rollout |
+| When this happens… | Fleet gives you… |
+|---|---|
+| The WAN to a plant drops and nobody can say what the site is running | The agent caches the complete desired revision (`0600`) and keeps reconciling drift locally; events stay on disk and replay later |
+| Managing remote sites means opening an inbound port or a remote shell | Pull-based agents with no inbound management port and no generic server-triggered shell |
+| Every site mixes systemd services, containers, k3s and the odd VM | One revision across four typed adapters: `systemd`, `container` (Docker/Podman), `k3s` and opt-in `qemu` |
+| A bad change hits every site at once | Strict wave rollouts with approval, windows, failure budgets, pause/resume/abort/retry and rollback |
+| A site is being serviced and must not get the next rollout | Site cordons: the site keeps its last accepted state but is excluded from new rollout plans |
+| CI needs to drive rollouts without a shared human password | Scoped API tokens (`read`, `sites:write`, `rollouts:write`, `admin`) stored only as SHA-256 digests, plus HMAC-signed webhooks |
 
-Fleet intentionally does **not** reimplement Nodra's device/event data plane or Fabric's private-cloud VM control plane.
-
-## Is this for you?
-
-Zyvor Fleet is a small, open-source (Apache-2.0) site lifecycle/desired-state control plane: declare what should run across systemd/container/k3s/QEMU targets, and a small on-site agent keeps reconciling — including fully offline — with no arbitrary remote shell. It is not a data/event plane (that's Nodra), not a general-purpose config management tool, and not a cloud-vendor device registry.
-
-| | **Zyvor Fleet** | balena | Azure IoT Hub Device Mgmt | AWS IoT Device Mgmt | Rancher/Fleet (k8s) | Ansible/SaltStack |
-|---|---|---|---|---|---|---|
-| Primary scope | Cross-runtime site desired-state + offline reconciliation | Container fleet + OTA via balenaCloud | Cloud device twin/management | Cloud device fleet indexing/jobs | Kubernetes cluster/app fleet only | Generic config push, no offline reconciliation loop |
-| Runtime targets | systemd, container (Docker/Podman), k3s, QEMU/KVM | balenaOS containers only | SDK-built | SDK-built | Kubernetes only | Anything reachable over SSH/agent |
-| Offline autonomy | First-class — agent caches the full desired revision | Limited — designed around balenaCloud connectivity | Requires connectivity | Requires connectivity | Requires API server reachability | Push-based; no continuous offline loop |
-| Cloud dependency | None required | balenaCloud (proprietary) | Azure IoT Hub | AWS IoT Core | Kubernetes API (self-hostable) | None, but no fleet control plane |
-| License | Apache-2.0 | Apache-2.0 agent + proprietary cloud | Proprietary | Proprietary | Apache-2.0 | Open-source core + commercial tiers |
-| HA control plane | Not yet — v0.3 is single-writer | Managed | Managed | Managed | Kubernetes-native HA | N/A |
-
-*(General characterizations as of writing — verify against each project's own docs.)*
-
-> **Maturity (honest):** v0.3 is a serious single-writer release. A transactional HA storage adapter is a **future** milestone ([docs/PRODUCT_PLAN.md](docs/PRODUCT_PLAN.md)), alongside signed artifacts, agent OTA, and air-gap OCI bundles — not present yet. Device Agent and OTA contract surfaces are real (see below). Nodra relationship remains architectural — no code integration in this repository today.
-
-**Integrations that ship today**
-
-- **Device Agent** — opt-in `-device-agent-url` merges namespaced hardware metadata into heartbeats; failure never blocks a heartbeat.
-- **Zyvor OTA** — `/v1/devices/{id}/assignment` and `/events` with digest-bound device tokens ([docs/OTA_CONTRACT.md](docs/OTA_CONTRACT.md)).
-
-New here? [`docs/FAQ.md`](docs/FAQ.md) · [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)
+![Capabilities at a glance: Declare, Roll out, Site, Operate](docs/ux/readme-capabilities.jpg)
 
 ## Capabilities
 
@@ -115,13 +95,88 @@ New here? [`docs/FAQ.md`](docs/FAQ.md) · [`docs/TROUBLESHOOTING.md`](docs/TROUB
 | `k3s` | Atomically maintain a k3s manifest | Validated name; explicit manifest content |
 | `qemu` | Start/stop a basic KVM/QEMU VM | Disabled by default; absolute disk path required |
 
-## Quick start
+---
+
+## Fleet vs balena
+
+![Fleet vs balena: any Linux, any runtime, offline by design](docs/ux/readme-vs.jpg)
+
+| | **Fleet** | **balena** |
+|---|---|---|
+| Device OS | The Linux you already run, with `fleet-agent` installed | balenaOS |
+| Workload kinds | `systemd`, `container` (Docker/Podman), `k3s`, opt-in `qemu` | Containers |
+| Control plane | `fleetd`, self-hosted (systemd, Compose or Helm) | balenaCloud (hosted), or self-hosted openBalena |
+| Offline behavior | Cached revision stays authoritative; typed adapters keep reconciling drift; events replay on reconnect | A supervisor on each device runs the current release |
+| Rollouts | Strict waves with approval, windows, failure budgets, rollback; OTA devices in canary waves | Release-based container updates |
+| License | Apache-2.0 | Apache-2.0 agent and openBalena; balenaCloud is proprietary |
+| HA control plane | Not yet — v0.3 is single-writer | Managed (balenaCloud) |
+| **Choose balena when** | | Your fleet is containers on balenaOS and you want a managed cloud to run it |
+
+## Is this for you?
+
+Zyvor Fleet is a small, open-source (Apache-2.0) site lifecycle/desired-state control plane: declare what should run across systemd/container/k3s/QEMU targets, and a small on-site agent keeps reconciling — including fully offline — with no arbitrary remote shell. It is not a data/event plane (that's Nodra), not a general-purpose config management tool, and not a cloud-vendor device registry.
+
+| | **Zyvor Fleet** | balena | Azure IoT Hub Device Mgmt | AWS IoT Device Mgmt | Rancher/Fleet (k8s) | Ansible/SaltStack |
+|---|---|---|---|---|---|---|
+| Primary scope | Cross-runtime site desired-state + offline reconciliation | Container fleet + OTA via balenaCloud | Cloud device twin/management | Cloud device fleet indexing/jobs | Kubernetes cluster/app fleet only | Generic config push, no offline reconciliation loop |
+| Runtime targets | systemd, container (Docker/Podman), k3s, QEMU/KVM | balenaOS containers only | SDK-built | SDK-built | Kubernetes only | Anything reachable over SSH/agent |
+| Offline autonomy | First-class — agent caches the full desired revision | Limited — designed around balenaCloud connectivity | Requires connectivity | Requires connectivity | Requires API server reachability | Push-based; no continuous offline loop |
+| Cloud dependency | None required | balenaCloud (proprietary) | Azure IoT Hub | AWS IoT Core | Kubernetes API (self-hostable) | None, but no fleet control plane |
+| License | Apache-2.0 | Apache-2.0 agent + proprietary cloud | Proprietary | Proprietary | Apache-2.0 | Open-source core + commercial tiers |
+| HA control plane | Not yet — v0.3 is single-writer | Managed | Managed | Managed | Kubernetes-native HA | N/A |
+
+*(General characterizations as of writing — verify against each project's own docs.)*
+
+New here? [`docs/FAQ.md`](docs/FAQ.md) · [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)
+
+---
+
+## How it fits together
+
+![The control plane declares; each site keeps going](docs/ux/readme-how-it-works.jpg)
+
+```text
+Browser
+   │ HTTPS
+   ▼
+┌──────────────────────────────────────────────┐
+│ fleetd                                       │
+│ embedded web UI · REST API · rollout engine  │
+│ auth / RBAC · single-writer store            │
+└──────────────────┬───────────────────────────┘
+                   │ outbound pull from sites
+         ┌─────────┴─────────┐
+         ▼                   ▼
+    fleet-agent          fleet-agent
+    typed adapters       typed adapters
+```
+
+v0.3 is deliberately a **single-writer** control plane. Kubernetes deploys one replica with a `ReadWriteOnce` volume. HA storage is a later milestone.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/V0.3_OPERATIONS.md](docs/V0.3_OPERATIONS.md).
+
+### Offline autonomy
+
+When sync fails:
+
+1. The agent marks the connectivity transition once.
+2. The cached revision remains authoritative locally.
+3. Typed adapters continue drift reconciliation.
+4. Events stay on disk.
+5. When the control plane returns, queued events replay through the next heartbeat.
+6. Any newer desired revision is then reconciled.
+
+No cloud/control-plane call is necessary to keep the last accepted desired state alive.
+
+---
+
+## Quickstart
 
 Requirements: Go 1.27+.
 
 ```bash
 git clone https://github.com/zyvorai/zyvorai-fleet.git
-cd fleet
+cd zyvorai-fleet
 make check && make build
 ```
 
@@ -190,41 +245,6 @@ Guided walkthrough: [docs/TUTORIAL.md](docs/TUTORIAL.md).
 
 Create the revision in the UI, target sites or a dynamic group, preview the rollout plan, set wave/failure/approval/window policy and start. A strict wave does not advance until every site in the active wave has reported success or failure.
 
-## Offline autonomy
-
-When sync fails:
-
-1. The agent marks the connectivity transition once.
-2. The cached revision remains authoritative locally.
-3. Typed adapters continue drift reconciliation.
-4. Events stay on disk.
-5. When the control plane returns, queued events replay through the next heartbeat.
-6. Any newer desired revision is then reconciled.
-
-No cloud/control-plane call is necessary to keep the last accepted desired state alive.
-
-## Architecture
-
-```text
-Browser
-   │ HTTPS
-   ▼
-┌──────────────────────────────────────────────┐
-│ fleetd                                       │
-│ embedded web UI · REST API · rollout engine  │
-│ auth / RBAC · single-writer store            │
-└──────────────────┬───────────────────────────┘
-                   │ outbound pull from sites
-         ┌─────────┴─────────┐
-         ▼                   ▼
-    fleet-agent          fleet-agent
-    typed adapters       typed adapters
-```
-
-v0.3 is deliberately a **single-writer** control plane. Kubernetes deploys one replica with a `ReadWriteOnce` volume. HA storage is a later milestone.
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/V0.3_OPERATIONS.md](docs/V0.3_OPERATIONS.md).
-
 ## Kubernetes
 
 ```bash
@@ -284,16 +304,67 @@ make check && make test-race && make live-smoke && make qualify
 
 CI: formatting, `go vet`, race tests, JS syntax, all binaries — plus rollout lifecycle, health gates, rollback/retry, and typed adapter drift.
 
-## License
+---
 
-Commercial subscriptions and support: see [docs/SUBSCRIPTION-MODEL.md](docs/SUBSCRIPTION-MODEL.md).
+## Maturity
 
-### Open source (Apache-2.0)
+> **Maturity (honest):** v0.3 is a serious single-writer release. A transactional HA storage adapter is a **future** milestone ([docs/PRODUCT_PLAN.md](docs/PRODUCT_PLAN.md)), alongside signed artifacts, agent OTA, and air-gap OCI bundles — not present yet. Device Agent and OTA contract surfaces are real (see below). Nodra relationship remains architectural — no code integration in this repository today.
 
-Licensed under the [Apache License, Version 2.0](LICENSE). Personal, lab, and commercial production use at no charge, subject to Apache-2.0 (preserve notices / NOTICE where required).
+**Integrations that ship today**
 
-### Enterprise
+- **Device Agent** — opt-in `-device-agent-url` merges namespaced hardware metadata into heartbeats; failure never blocks a heartbeat.
+- **Zyvor OTA** — `/v1/devices/{id}/assignment` and `/events` with digest-bound device tokens ([docs/OTA_CONTRACT.md](docs/OTA_CONTRACT.md)).
 
-Production support, SLAs, and Zyvor Enterprise products are licensed separately.
-Evaluate with the team: [Book a demo](https://zyvor.dev/schedule?utm_source=github&utm_medium=fleet&utm_campaign=readme_footer) · [30-day PoC](https://zyvor.dev/poc?utm_source=github&utm_medium=fleet&utm_campaign=readme_footer).
-Or contact [sales@zyvor.dev](mailto:sales@zyvor.dev), or see [zyvor.dev](https://zyvor.dev/?utm_source=github&utm_medium=fleet&utm_campaign=readme_edition).
+---
+
+## Part of the Zyvor stack
+
+Zyvor already has strong point products. Fleet is the **site lifecycle and desired-state layer** that connects them.
+
+| Product | Role next to Fleet |
+|---|---|
+| **[Device Agent](https://github.com/zyvorai/zyvor-device-agent)** | Ships today: opt-in `-device-agent-url` merges hardware metadata into Fleet heartbeats |
+| **[Zyvor OTA](https://github.com/zyvorai/ota)** | Ships today: Fleet serves the OTA device assignment and events contract |
+| **[Nodra](https://github.com/zyvorai/nodra)** | Pairs with Fleet as the optional edge-data plane (architectural; no code integration in this repo) |
+| **[Yard](https://github.com/zyvorai/yard)** | Ops console whose Fleet connector pulls sites, rollouts and OTA devices ([edge-stack suite](https://github.com/zyvorai/edge-stack)) |
+
+The wider platform relationships, as Fleet sees them:
+
+| Product | Owns | Fleet relationship |
+|---|---|---|
+| **Nodra** | MQTT/HTTP edge ingress, store-and-forward, twins, local routes | Optional edge-data plane |
+| **Zyvor Relay** | Durable operational action/ack/verify workflow | Optional action bus |
+| **PacketWolf** | eBPF network intelligence | Optional network health/policy evidence |
+| **Argus** | Application assurance | Optional post-rollout verification |
+| **Forge** | GPU/inference operations | Optional edge AI plane |
+| **HyperCluster** | Kubernetes cluster lifecycle | Fleet can coordinate site-level promotion |
+| **IronWolf** | Bare-metal lifecycle | Fleet can represent/target the resulting sites |
+| **Zeus OS / Machina** | VM operations | Fleet handles cross-site desired-state rollout |
+
+Fleet intentionally does **not** reimplement Nodra's device/event data plane or Fabric's private-cloud VM control plane.
+
+→ [zyvor.dev](https://zyvor.dev)
+
+---
+
+## License and support
+
+Fleet is **free and open source** under the [Apache License, Version 2.0](LICENSE). Personal, lab, and commercial production use at no charge, subject to Apache-2.0 (preserve notices / NOTICE where required). See [NOTICE](NOTICE).
+
+**Zyvor Enterprise** adds what production teams ask for: supported releases, deployment and upgrade guidance, priority incident triage, a named technical contact and 24x7 critical intake. Plans and terms: [docs/SUBSCRIPTION-MODEL.md](docs/SUBSCRIPTION-MODEL.md) · [Pricing](https://zyvor.dev/pricing?utm_source=github&utm_medium=fleet&utm_campaign=readme_license) · [sales@zyvor.dev](mailto:sales@zyvor.dev).
+
+See [SECURITY.md](SECURITY.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
+<div align="center">
+
+### Keep every site running, even when the WAN is not
+
+[![Book a demo](https://img.shields.io/badge/Book_a_demo-0071e3?style=for-the-badge)](https://zyvor.dev/schedule?utm_source=github&utm_medium=fleet&utm_campaign=readme_footer)
+[![30-day PoC](https://img.shields.io/badge/Start_a_30--day_PoC-000000?style=for-the-badge)](https://zyvor.dev/poc?utm_source=github&utm_medium=fleet&utm_campaign=readme_footer)
+[![Pricing](https://img.shields.io/badge/Pricing-1d1d1f?style=for-the-badge)](https://zyvor.dev/pricing?utm_source=github&utm_medium=fleet&utm_campaign=readme_footer)
+[![Contact sales](https://img.shields.io/badge/Contact_sales-2997ff?style=for-the-badge)](mailto:sales@zyvor.dev?subject=Fleet)
+[![Star on GitHub](https://img.shields.io/github/stars/zyvorai/zyvorai-fleet?style=for-the-badge&logo=github&label=Star&color=2997ff)](https://github.com/zyvorai/zyvorai-fleet)
+
+</div>

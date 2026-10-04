@@ -1,18 +1,18 @@
 # Fleet
 
-[![CI](https://github.com/zyvorai/fleet/actions/workflows/ci.yml/badge.svg)](https://github.com/zyvorai/fleet/actions/workflows/ci.yml)
+[![CI](https://github.com/zyvorai/zyvorai-fleet/actions/workflows/ci.yml/badge.svg)](https://github.com/zyvorai/zyvorai-fleet/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.27%2B-00ADD8.svg)](go.mod)
 [![Version](https://img.shields.io/badge/version-0.3-informational)](docs/PRODUCT_PLAN.md)
 
-![Fleet — every site still running](docs/social/fleet-share-card.png)
+![Fleet — every site still running](docs/social/fleet-hero-dark.jpg)
 
 **Every site. Still running.**
 
 [![Book a demo](https://img.shields.io/badge/Book_a_demo-0071e3?style=for-the-badge)](https://zyvor.dev/schedule?utm_source=github&utm_medium=fleet&utm_campaign=readme_hero)
 [![30-day PoC](https://img.shields.io/badge/30--day_PoC-1d1d1f?style=for-the-badge)](https://zyvor.dev/poc?utm_source=github&utm_medium=fleet&utm_campaign=readme_hero)
 
-📖 **[Read the full docs](https://zyvorai.github.io/fleet/)** — tutorial, deployment, runtime adapters, and production runbooks.
+📖 **[Read the full docs](https://zyvorai.github.io/zyvorai-fleet/)** — tutorial, deployment, runtime adapters, and production runbooks.
 
 Offline-first edge fleet control plane for Linux, Kubernetes, containers and virtual machines. The control plane declares what should run. A small `fleet-agent` pulls that desired state, caches the complete revision locally, and keeps reconciling it when the WAN disappears — with no arbitrary remote shell.
 
@@ -120,7 +120,7 @@ New here? [`docs/FAQ.md`](docs/FAQ.md) · [`docs/TROUBLESHOOTING.md`](docs/TROUB
 Requirements: Go 1.27+.
 
 ```bash
-git clone https://github.com/zyvorai/fleet.git
+git clone https://github.com/zyvorai/zyvorai-fleet.git
 cd fleet
 make check && make build
 ```
@@ -264,7 +264,7 @@ See [SECURITY.md](SECURITY.md).
 
 | Doc | Topic |
 |---|---|
-| [zyvorai.github.io/fleet](https://zyvorai.github.io/fleet/) | Product docs |
+| [zyvorai.github.io/zyvorai-fleet](https://zyvorai.github.io/zyvorai-fleet/) | Product docs |
 | [docs/TUTORIAL.md](docs/TUTORIAL.md) | Guided first rollout |
 | [docs/FAQ.md](docs/FAQ.md) | Licensing, support, readiness |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Systemd, Compose, Helm |

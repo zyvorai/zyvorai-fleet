@@ -1,7 +1,7 @@
 site_name: Zyvor Fleet
 site_description: Offline-first edge fleet control plane for Linux, Kubernetes, containers and virtual machines.
-site_url: https://zyvorai.github.io/fleet/
-repo_url: https://github.com/zyvorai/fleet
+site_url: https://zyvorai.github.io/zyvorai-fleet/
+repo_url: https://github.com/zyvorai/zyvorai-fleet
 repo_name: zyvorai/fleet
 edit_uri: edit/main/docs/
 docs_dir: docs
@@ -61,4 +61,4 @@ nav:
       - Product plan: PRODUCT_PLAN.md
 extra:
   social:
-    - {icon: fontawesome/brands/github, link: https://github.com/zyvorai/fleet}
+    - {icon: fontawesome/brands/github, link: https://github.com/zyvorai/zyvorai-fleet}

@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://zyvorai.github.io/fleet/sitemap.xml
+Sitemap: https://zyvorai.github.io/zyvorai-fleet/sitemap.xml

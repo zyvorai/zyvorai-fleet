@@ -19,7 +19,7 @@
 
 **Keeps reconciling offline** · **4 typed runtime adapters** · **No inbound port on the site** · **0 Go dependencies** · **Strict wave rollouts**
 
-📖 **[Read the full docs](https://zyvorai.github.io/fleet/docs/)** · 🌐 **[Site](https://zyvorai.github.io/fleet/)** — tutorial, deployment, runtime adapters, and production runbooks.
+📖 **[Read the full docs](https://zyvorai.github.io/zyvorai-fleet/docs/)** · 🌐 **[Site](https://zyvorai.github.io/zyvorai-fleet/)** — tutorial, deployment, runtime adapters, and production runbooks.
 
 </div>
 

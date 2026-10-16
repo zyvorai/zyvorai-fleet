@@ -5,7 +5,7 @@ repo_url: https://github.com/zyvorai/zyvorai-fleet
 repo_name: zyvorai/fleet
 edit_uri: edit/main/docs/
 docs_dir: docs
-site_dir: site
+site_dir: _docs-site
 theme:
   name: material
   logo: assets/readme/zyvor-logo.svg
@@ -59,6 +59,7 @@ nav:
       - Testing: TESTING.md
   - Roadmap:
       - Product plan: PRODUCT_PLAN.md
+  - Support: support.md
 extra:
   social:
     - {icon: fontawesome/brands/github, link: https://github.com/zyvorai/zyvorai-fleet}

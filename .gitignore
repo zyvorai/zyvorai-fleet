@@ -11,4 +11,4 @@ __pycache__/
 *.pyc
 
 .venv-docs/
-site/
+_docs-site/

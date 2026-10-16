@@ -19,7 +19,7 @@
 
 **Keeps reconciling offline** · **4 typed runtime adapters** · **No inbound port on the site** · **0 Go dependencies** · **Strict wave rollouts**
 
-📖 **[Read the full docs](https://zyvorai.github.io/zyvorai-fleet/)** — tutorial, deployment, runtime adapters, and production runbooks.
+📖 **[Read the full docs](https://zyvorai.github.io/fleet/docs/)** · 🌐 **[Site](https://zyvorai.github.io/fleet/)** — tutorial, deployment, runtime adapters, and production runbooks.
 
 </div>
 
@@ -354,6 +354,10 @@ Fleet is **free and open source** under the [Apache License, Version 2.0](LICENS
 **Zyvor Enterprise** adds what production teams ask for: supported releases, deployment and upgrade guidance, priority incident triage, a named technical contact and 24x7 critical intake. Plans and terms: [docs/SUBSCRIPTION-MODEL.md](docs/SUBSCRIPTION-MODEL.md) · [Pricing](https://zyvor.dev/pricing?utm_source=github&utm_medium=fleet&utm_campaign=readme_license) · [sales@zyvor.dev](mailto:sales@zyvor.dev).
 
 See [SECURITY.md](SECURITY.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Support
+
+Free under Apache-2.0. If it helps you, you can donate any amount you like: <https://rzp.io/rzp/utwdYh3>. A donation is voluntary and supports development and maintenance. It is not a purchase: it buys no support, SLA, features, priority or license, and it is not tax-deductible (Zyvor AI Labs Private Limited is a company, not a charity). Zyvor Enterprise (supported releases, SLAs, a named contact and enterprise features) is separate: [sales@zyvor.dev](mailto:sales@zyvor.dev).
 
 ---
 

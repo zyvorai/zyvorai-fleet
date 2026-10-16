@@ -1,8 +1,9 @@
-name: Deploy docs
+name: Check docs
 
+# Deployment moved to pages.yml (landing at /, docs at /docs). This only keeps
+# `mkdocs build --strict` green on pull requests.
 on:
-  push:
-    branches: [main]
+  pull_request:
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
@@ -12,19 +13,10 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v7
@@ -36,8 +28,3 @@ jobs:
         run: pip install -r requirements-docs.txt
       - name: Build site
         run: mkdocs build --strict
-      - uses: actions/upload-pages-artifact@v5
-        with:
-          path: site
-      - id: deployment
-        uses: actions/deploy-pages@v5

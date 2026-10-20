@@ -16,9 +16,13 @@ volume.
 EOF
 }
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || $# -lt 1 ]]; then
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
+fi
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+  usage >&2
+  exit 2
 fi
 
 STATE=$1
@@ -32,6 +36,13 @@ STATE_BASE=$(basename "$STATE")
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 OUT=${2:-"fleet-backup-${STAMP}.tar.gz"}
 OUT=$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$OUT")
+
+case "$OUT" in
+  "$DATA_DIR"/*)
+    echo "archive path $OUT is inside the data dir $DATA_DIR; choose a location outside it" >&2
+    exit 1
+    ;;
+esac
 
 tar -C "$DATA_DIR" -czf "$OUT" .
 {

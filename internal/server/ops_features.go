@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -488,6 +489,9 @@ func (s *Server) auditActor(r *http.Request) string {
 
 func (s *Server) listAudit(w http.ResponseWriter, r *http.Request) {
 	limit := 200
+	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 && v < limit {
+		limit = v
+	}
 	st := s.store.Snapshot()
 	if len(st.AuditLog) < limit {
 		limit = len(st.AuditLog)

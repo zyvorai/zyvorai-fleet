@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -163,4 +164,52 @@ func TestOTAEventReplayDoesNotLowerAck(t *testing.T) {
 	if got := post("[" + ev(1) + "," + ev(2) + "]"); got != 5 {
 		t.Fatalf("replay lowered ack to %d, want 5", got)
 	}
+}
+
+func TestOTAEventsStoredInSequenceOrder(t *testing.T) {
+	e := newTestEnv(t)
+	defer e.close()
+	if code, b := e.req("POST", "/api/v1/auth/login", map[string]string{"email": "admin@example.test", "password": "test-admin-password"}, false); code != 200 {
+		t.Fatalf("login %d: %s", code, b)
+	}
+	code, b := e.req("POST", "/api/v1/ota/devices", map[string]string{"deviceId": "order-dev", "name": "order"}, true)
+	if code != 201 {
+		t.Fatalf("create device %d: %s", code, b)
+	}
+	token := decode[map[string]any](t, b)["token"].(string)
+	var body strings.Builder
+	body.WriteString("[")
+	for i := 1; i <= 40; i++ {
+		if i > 1 {
+			body.WriteString(",")
+		}
+		fmt.Fprintf(&body, `{"sequence":%d,"job_id":"job","state":"downloading","time":"2026-09-21T12:00:00Z"}`, 41-i)
+	}
+	body.WriteString("]")
+	req, _ := http.NewRequest(http.MethodPost, e.server.URL+"/v1/devices/order-dev/events", bytes.NewBufferString(body.String()))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	for _, d := range e.store.Snapshot().OTADevices {
+		if d.DeviceID != "order-dev" {
+			continue
+		}
+		if len(d.Events) != 40 {
+			t.Fatalf("events=%d want 40", len(d.Events))
+		}
+		for i, ev := range d.Events {
+			if ev.Sequence != uint64(i+1) {
+				t.Fatalf("event %d has sequence %d, want sorted", i, ev.Sequence)
+			}
+		}
+		return
+	}
+	t.Fatal("device not found")
 }

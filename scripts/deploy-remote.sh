@@ -298,7 +298,7 @@ patch_unit_listen() {
   if grep -qE '^Environment=ZYVOR_FLEET_LISTEN=' "$unit"; then
     $SUDO sed -i "s|^Environment=ZYVOR_FLEET_LISTEN=.*|Environment=ZYVOR_FLEET_LISTEN=${ADDR}|" "$unit"
   fi
-  if grep -qE '^ExecStart=.*--listen'; then
+  if grep -qE '^ExecStart=.*--listen' "$unit"; then
     $SUDO sed -i "s|--listen :[0-9]*|--listen ${ADDR}|" "$unit"
   fi
 }

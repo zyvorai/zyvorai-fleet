@@ -127,3 +127,40 @@ func postOTAEvent(t *testing.T, e *testEnv, id, token string, seq int, state, er
 		t.Fatalf("event %s: %d %s", id, resp.StatusCode, buf.String())
 	}
 }
+
+func TestOTAEventReplayDoesNotLowerAck(t *testing.T) {
+	e := newTestEnv(t)
+	defer e.close()
+	if code, b := e.req("POST", "/api/v1/auth/login", map[string]string{"email": "admin@example.test", "password": "test-admin-password"}, false); code != 200 {
+		t.Fatalf("login %d: %s", code, b)
+	}
+	code, b := e.req("POST", "/api/v1/ota/devices", map[string]string{"deviceId": "replay-dev", "name": "replay"}, true)
+	if code != 201 {
+		t.Fatalf("create device %d: %s", code, b)
+	}
+	token := decode[map[string]any](t, b)["token"].(string)
+	post := func(body string) uint64 {
+		req, _ := http.NewRequest(http.MethodPost, e.server.URL+"/v1/devices/replay-dev/events", bytes.NewBufferString(body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var out map[string]uint64
+		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || resp.StatusCode != 200 {
+			t.Fatalf("status=%d err=%v", resp.StatusCode, err)
+		}
+		return out["sequence"]
+	}
+	ev := func(n int) string {
+		return fmt.Sprintf(`{"sequence":%d,"job_id":"job","state":"downloading","time":"2026-09-21T12:00:00Z"}`, n)
+	}
+	if got := post("[" + ev(1) + "," + ev(2) + "," + ev(3) + "," + ev(4) + "," + ev(5) + "]"); got != 5 {
+		t.Fatalf("ack=%d want 5", got)
+	}
+	if got := post("[" + ev(1) + "," + ev(2) + "]"); got != 5 {
+		t.Fatalf("replay lowered ack to %d, want 5", got)
+	}
+}

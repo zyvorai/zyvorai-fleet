@@ -142,8 +142,10 @@ func (s *Server) otaPostEvents(w http.ResponseWriter, r *http.Request) {
 			}
 			acked = next
 		}
+		// Clamp to the batch's last sequence, but never move the ACK backwards
+		// when a device replays an older batch.
 		last := events[len(events)-1].Sequence
-		if acked > last {
+		if acked > last && last >= dev.AckedSeq {
 			acked = last
 		}
 		dev.AckedSeq = acked

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -126,11 +127,13 @@ func (s *Server) otaPostEvents(w http.ResponseWriter, r *http.Request) {
 			}
 			bySeq[ev.Sequence] = ev
 		}
-		// Rebuild sorted-ish slice from map (bounded).
+		// Rebuild from the map in sequence order so the stored bytes are
+		// deterministic (idempotent replays then skip the disk write).
 		dev.Events = make([]model.OTADeviceEvent, 0, len(bySeq))
 		for _, ev := range bySeq {
 			dev.Events = append(dev.Events, ev)
 		}
+		sort.Slice(dev.Events, func(i, j int) bool { return dev.Events[i].Sequence < dev.Events[j].Sequence })
 		if len(dev.Events) > 10000 {
 			return errors.New("event store full")
 		}

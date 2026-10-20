@@ -6,6 +6,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -193,5 +194,23 @@ func TestSignedWebhookAndMutationAudit(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected API-token mutation in audit log: %+v", audit)
+	}
+}
+
+func TestAuditListHonorsLimit(t *testing.T) {
+	e := newTestEnv(t)
+	defer e.close()
+	if code, b := e.req("POST", "/api/v1/auth/login", map[string]string{"email": "admin@example.test", "password": "test-admin-password"}, false); code != 200 {
+		t.Fatalf("login %d: %s", code, b)
+	}
+	for i := 0; i < 5; i++ {
+		e.req("POST", "/api/v1/ota/devices", map[string]string{"deviceId": fmt.Sprintf("lim-%d", i), "name": "x"}, true)
+	}
+	code, b := e.req("GET", "/api/v1/audit?limit=3", nil, false)
+	if code != 200 {
+		t.Fatalf("audit %d: %s", code, b)
+	}
+	if got := len(decode[[]model.AuditRecord](t, b)); got != 3 {
+		t.Fatalf("limit=3 returned %d records", got)
 	}
 }

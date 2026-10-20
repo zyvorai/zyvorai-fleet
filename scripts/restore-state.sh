@@ -16,9 +16,13 @@ Set FLEET_RESTORE_FORCE=1 to overwrite an existing non-empty data-dir.
 EOF
 }
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || $# -ne 2 ]]; then
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
+fi
+if [[ $# -ne 2 ]]; then
+  usage >&2
+  exit 2
 fi
 
 ARCHIVE=$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$1")

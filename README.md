@@ -23,6 +23,8 @@
 
 </div>
 
+[Client overview (PDF)](docs/Zyvor-Fleet-Client-Overview.pdf)
+
 ---
 
 ```text

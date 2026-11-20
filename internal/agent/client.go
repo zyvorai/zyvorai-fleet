@@ -1,0 +1,127 @@
+// Copyright 2026 Zyvor AI Labs · https://zyvor.dev
+// SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
+
+package agent
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/zyvorai/fleet/internal/model"
+)
+
+type Client struct {
+	BaseURL string
+	HTTP    *http.Client
+	Version string
+
+	// DeviceAgentURL, when set, enriches every Register/Heartbeat inventory
+	// payload with a local Zyvor Device Agent's hardware metadata. Empty
+	// (the default) is fully opt-in and disables this entirely.
+	DeviceAgentURL string
+	// DeviceAgentToken authenticates to the Device Agent's API when it has
+	// auth.mode = "bearer" configured. Empty is fine against a Device Agent
+	// running with auth.mode = "none" (its default).
+	DeviceAgentToken string
+	DeviceAgentHTTP  *http.Client
+	Logger           *slog.Logger
+}
+
+var Version = "dev"
+
+func NewClient(base string) *Client {
+	return &Client{
+		BaseURL: strings.TrimRight(base, "/"),
+		HTTP:    &http.Client{Timeout: 12 * time.Second},
+		Version: Version,
+		// Short, independent timeout: an unreachable local Device Agent must
+		// never eat into the heartbeat cycle budget.
+		DeviceAgentHTTP: &http.Client{Timeout: 3 * time.Second},
+	}
+}
+
+type Registration struct {
+	SiteID           string `json:"siteId"`
+	AgentToken       string `json:"agentToken"`
+	HeartbeatSeconds int    `json:"heartbeatSeconds"`
+}
+
+func (c *Client) Register(ctx context.Context, enroll, name, region string, labels map[string]string) (Registration, error) {
+	var out Registration
+	body := map[string]any{"name": name, "region": region, "labels": labels, "agentVersion": c.Version, "inventory": c.enrichWithDeviceAgent(ctx, Inventory())}
+	err := c.do(ctx, http.MethodPost, "/api/v1/agent/register", enroll, "", body, &out)
+	return out, err
+}
+func (c *Client) Heartbeat(ctx context.Context, siteID, token, applied, failedRevision, revisionError string, queued int, autonomy bool, health []model.WorkloadHealth, events []model.Event) error {
+	body := map[string]any{"inventory": c.enrichWithDeviceAgent(ctx, Inventory()), "agentVersion": c.Version, "appliedRevision": applied, "failedRevision": failedRevision, "revisionError": revisionError, "queuedEvents": queued, "autonomyMode": autonomy, "workloadHealth": health, "events": events}
+	return c.do(ctx, http.MethodPost, "/api/v1/agent/heartbeat", token, siteID, body, &struct{}{})
+}
+
+type SyncResponse struct {
+	SiteID, DesiredRevision string
+	Revision                *model.Revision `json:"revision"`
+	Commands                []model.Command `json:"commands"`
+	SyncAfterSeconds        int             `json:"syncAfterSeconds"`
+}
+
+func (c *Client) Sync(ctx context.Context, siteID, token string) (SyncResponse, error) {
+	var out SyncResponse
+	err := c.do(ctx, http.MethodGet, "/api/v1/agent/sync", token, siteID, nil, &out)
+	return out, err
+}
+func (c *Client) Ack(ctx context.Context, siteID, token, commandID, status, errText, applied string) error {
+	body := map[string]any{"commandId": commandID, "status": status, "error": errText, "appliedRevision": applied}
+	return c.do(ctx, http.MethodPost, "/api/v1/agent/ack", token, siteID, body, &struct{}{})
+}
+func (c *Client) do(ctx context.Context, method, path, token, siteID string, body any, out any) error {
+	var reader io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		reader = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, reader)
+	if err != nil {
+		return err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	if siteID != "" {
+		req.Header.Set("X-Zyvor-Site-ID", siteID)
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		var e struct {
+			Error string `json:"error"`
+		}
+		_ = json.Unmarshal(b, &e)
+		if e.Error == "" {
+			e.Error = strings.TrimSpace(string(b))
+		}
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, e.Error)
+	}
+	if out == nil {
+		return nil
+	}
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
+}

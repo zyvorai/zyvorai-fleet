@@ -1,0 +1,173 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Formatting
+        run: test -z "$(gofmt -l cmd internal webui)"
+      - name: Vet
+        run: go vet ./...
+      - name: Unit and integration tests
+        run: go test -race -coverprofile=coverage.out ./...
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage.out
+      - name: Web JavaScript syntax
+        run: node --check webui/static/app.js
+      - name: Build all binaries
+        run: make build
+      - name: Live control-plane and edge-agent smoke
+        run: python3 scripts/live-smoke.py
+      - name: Software qualification matrix
+        run: make qualify
+      - uses: actions/upload-artifact@v7
+        with:
+          name: qualification-software
+          path: evidence/qualification/software-matrix.json
+          if-no-files-found: error
+
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v4
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install kubeconform
+        run: go install github.com/yannh/kubeconform/cmd/kubeconform@latest
+      - run: helm lint deploy/helm/zyvor-fleet
+      - name: Helm template + kubeconform
+        run: |
+          helm template fleet deploy/helm/zyvor-fleet \
+            --set image.repository=zyvor-fleet --set image.tag=ci \
+            --set admin.password=ci-admin-password \
+            --set sessionSecret=ci-session-secret-0123456789abcdef \
+            --set persistence.enabled=false \
+            > /tmp/zyvor-fleet.yaml
+          kubeconform -summary -strict /tmp/zyvor-fleet.yaml
+
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+
+  compose-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compose stack smoke
+        run: |
+          chmod +x scripts/ci/compose-smoke.sh scripts/smoke.sh
+          ./scripts/ci/compose-smoke.sh
+
+  tls-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: sudo apt-get update && sudo apt-get install -y openssl
+      - name: HTTPS fleetd TLS smoke
+        run: |
+          chmod +x scripts/ci/tls-smoke.sh
+          ./scripts/ci/tls-smoke.sh
+
+  backup-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Backup/restore state round-trip
+        run: |
+          chmod +x scripts/ci/backup-restore.sh scripts/backup-state.sh scripts/restore-state.sh
+          ./scripts/ci/backup-restore.sh
+
+  soak-short:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Abbreviated control-plane soak
+        env:
+          FLEET_SOAK_SECONDS: "30"
+        run: |
+          chmod +x scripts/ci/soak-short.sh
+          ./scripts/ci/soak-short.sh
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: soak-short-evidence
+          path: evidence/qualification/ci/soak-short
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: zyvor-fleet:ci
+
+  suite-ci:
+    needs: [test, helm, compose-smoke, tls-smoke, backup-restore, soak-short, govulncheck, container]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Qualify with CI lab-substitute markers
+        env:
+          FLEET_QUALIFY_FAST: "1"
+          FLEET_CI_TLS: "1"
+          FLEET_CI_COMPOSE: "1"
+          FLEET_CI_BACKUP: "1"
+        run: python3 scripts/qualify-matrix.py
+      - uses: actions/upload-artifact@v7
+        with:
+          name: qualification-suite-ci
+          path: evidence/qualification/software-matrix.json

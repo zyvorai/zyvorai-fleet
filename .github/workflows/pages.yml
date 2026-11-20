@@ -1,0 +1,51 @@
+# Deploys the landing page (site/) at / and the MkDocs docs at /docs.
+# Requires GitHub Pages with Source = "GitHub Actions" (already used by the docs).
+name: Deploy site and docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'requirements-docs.txt'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+      - name: Install MkDocs
+        run: pip install -r requirements-docs.txt
+      - name: Build docs
+        run: mkdocs build --strict
+      - name: Assemble site (landing at /, docs at /docs)
+        run: |
+          mkdir -p _pages
+          cp -R site/. _pages/
+          cp -R _docs-site _pages/docs
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _pages
+      - id: deployment
+        uses: actions/deploy-pages@v5

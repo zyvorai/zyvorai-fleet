@@ -1,0 +1,94 @@
+---
+hero:
+  eyebrow: FAQ
+  title: FAQ
+---
+
+Questions people evaluating Zyvor Fleet actually ask, before they've
+decided to adopt it. Already decided?
+[`docs/TUTORIAL.md`](TUTORIAL.md) is a better starting point.
+
+## Licensing & cost
+
+**Do I need a license?** Yes. Running it requires a commercial
+license from Zyvor AI Labs (sales@zyvor.dev,
+https://zyvor.dev/buy; a 30-day trial key is available). Notices must be
+preserved (see [`NOTICE`](https://github.com/zyvorai/fleet/blob/main/NOTICE)). See the README's
+[License](https://github.com/zyvorai/fleet#license) section.
+
+**What does "Enterprise" mean here?** Production support, SLAs, and
+Zyvor's other commercial products are licensed separately from this
+source-available control plane. Contact sales@zyvor.dev.
+
+## Support
+
+**What if I find a bug?** Open a GitHub issue.
+
+**What if I find a security vulnerability?** See [`SECURITY.md`](https://github.com/zyvorai/fleet/blob/main/SECURITY.md)
+for private reporting — supported versions are the latest tagged minor
+release only.
+
+## Production readiness
+
+**Is this production-ready?** For **single-writer** Fleet v0.3: **yes**, when
+deployed with HTTPS, strong admin password + session secret, **no** `--demo`,
+and a signed ops checklist ([PRODUCTION.md](PRODUCTION.md)). Lab host
+`80.79.5.173` already has non-demo + abbreviated WAN signed as a reference —
+customer installs must still rotate secrets and sign their own checklist.
+What's **not** there: HA / multi-writer storage ([ARCHITECTURE.md](https://github.com/zyvorai/fleet/blob/main/ARCHITECTURE.md),
+[PRODUCT_PLAN.md](PRODUCT_PLAN.md)).
+
+**Before going to production, what should I check?** See
+[`docs/DEPLOYMENT.md`](DEPLOYMENT.md) and [PRODUCTION.md](PRODUCTION.md):
+`make qualify`, HTTPS, non-demo, backup/restore drill, then sign
+[`evidence/qualification/ops-checklist.md`](https://github.com/zyvorai/fleet/blob/main/evidence/qualification/ops-checklist.md).
+Multi-product evaluation host: [`docs/LAB.md`](LAB.md).
+
+**Does Fleet speak the Zyvor OTA contract?** Yes — device
+`/v1/devices/{id}/assignment` + `/events` and operator `/api/v1/ota/...`
+([`docs/OTA_CONTRACT.md`](OTA_CONTRACT.md)). OTA agents need HTTPS
+`fleet_url` and a trusted CA. Event ACKs are contiguous.
+
+## Runtime & platform support
+
+**What can it actually manage?** Four typed runtime adapters:
+`systemd`, `container` (Docker/Podman), `k3s`, and `qemu`/KVM — see
+[`docs/RUNTIME_ADAPTERS.md`](RUNTIME_ADAPTERS.md). There is deliberately no
+generic/arbitrary-shell workload type; every adapter has its own
+health-probe gates.
+
+**Does it require Kubernetes?** No — Kubernetes/k3s is one of four runtime
+targets, not a requirement to run the control plane itself (which also
+ships a Helm chart and raw manifests if you do want it on k8s).
+
+## Offline operation
+
+**What happens when a site loses connectivity?** This is a first-class
+design point, not a degraded mode: the agent caches the complete desired
+revision, its typed runtime adapter keeps reconciling drift locally, and
+operational events queue on disk. "No cloud/control-plane call is
+necessary to keep the last accepted desired state alive" (README's
+"Offline autonomy" section). Queued events replay on the next heartbeat
+once connectivity returns.
+
+## Integration with other Zyvor products
+
+**Does it integrate with Zyvor Device Agent?** Yes, for real — an opt-in
+`-device-agent-url` flag (or `ZYVOR_FLEET_DEVICE_AGENT_URL`) merges Device
+Agent's namespaced hardware metadata into fleet-agent heartbeats.
+Deliberately excludes fields using a different taxonomy than Fleet's own
+(hostname/os/arch/kernel/capabilities); a failure to reach Device Agent
+never blocks a heartbeat.
+
+**Does it integrate with Nodra?** Not in code today. The README's "Why
+this is a separate Zyvor product" table describes Nodra as an "optional
+edge-data plane" relationship, but that's architectural positioning, not a
+shipped integration — don't assume Fleet consumes Nodra data out of the
+box.
+
+## Security
+
+**Can an operator run arbitrary commands on a site through Fleet?** No —
+"The agent exposes no arbitrary remote shell" (README). See
+[`SECURITY.md`](https://github.com/zyvorai/fleet/blob/main/SECURITY.md) for the full security model and trust
+boundaries.

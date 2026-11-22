@@ -1,5 +1,5 @@
 // Copyright 2026 Zyvor AI Labs · https://zyvor.dev
-// SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
+// SPDX-License-Identifier: LicenseRef-Zyvor-Production-2.0
 
 (() => {
   'use strict';
@@ -107,7 +107,7 @@
               <div class="hero-proof">
                 <div class="proof-item"><i class="proof-dot"></i> Offline-first autonomy</div>
                 <div class="proof-item"><i class="proof-dot"></i> Pull-based secure control</div>
-                <div class="proof-item"><i class="proof-dot"></i> Zyvor Production License v1.0</div>
+                <div class="proof-item"><i class="proof-dot"></i> Zyvor Production Licence v2.0</div>
               </div>
               <div class="login-cta"><a class="primary-btn" href="#sign-in">Sign in</a></div>
               <p class="login-chapter-note">Scroll down, or tap Sign in, to continue.</p>

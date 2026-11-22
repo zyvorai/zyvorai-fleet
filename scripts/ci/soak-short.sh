@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright 2026 Zyvor AI Labs · https://zyvor.dev
-# SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
+# SPDX-License-Identifier: LicenseRef-Zyvor-Production-2.0
 #
 # Abbreviated (~10m) WAN/disk soak wrapper for CI or local drills.
 # Does not prove production HA — see docs/HA.md and docs/QUALIFICATION.md.

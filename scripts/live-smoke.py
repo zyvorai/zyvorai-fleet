@@ -1,5 +1,5 @@
 # Copyright 2026 Zyvor AI Labs · https://zyvor.dev
-# SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
+# SPDX-License-Identifier: LicenseRef-Zyvor-Production-2.0
 
 import os, sys, json, time, socket, shutil, signal, subprocess, tempfile, urllib.request, urllib.error, http.cookiejar
 from pathlib import Path

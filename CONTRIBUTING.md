@@ -25,4 +25,4 @@ Keep changes small, add tests for behavior, run `gofmt`, and avoid adding depend
 - The web console must work without CDNs, external fonts, trackers, or third-party JavaScript.
 - Nodra owns edge data ingress/twins/routes; Fleet owns site lifecycle and desired state. Do not merge those responsibilities.
 
-By contributing, you agree that your contribution is licensed under the Zyvor Production License v1.0 (SPDX `LicenseRef-Zyvor-Production-1.0`).
+By contributing, you agree that your contribution is licensed under the Zyvor Production Licence v2.0 (SPDX `LicenseRef-Zyvor-Production-2.0`).

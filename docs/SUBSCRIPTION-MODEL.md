@@ -35,6 +35,6 @@ Buy / get a quote: <https://zyvor.dev/buy>. A 30-day trial key is available for 
 - Annual prepaid subscription is the default, with a 12-month minimum. Multi-year prepay is available.
 - Minimums apply after any discounts.
 - Implementation, migration, training and managed operations are separate services.
-- At expiry, updates, downloads and support end. Rights under the Zyvor Production License v1.0 continue as stated in that license.
+- At expiry, updates, downloads and support end. Rights under the Zyvor Production Licence v2.0 continue as stated in that license.
 - Response targets need a contracted scope and are not uptime guarantees.
 - Existing signed agreements keep their agreed terms.

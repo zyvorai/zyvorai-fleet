@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
+# SPDX-License-Identifier: LicenseRef-Zyvor-Production-2.0
 # Abbreviated WAN / control-plane outage drill for Fleet on a live lab host.
 # Stops fleetd briefly while site agent(s) run; records offline + reconnect.
 set -euo pipefail

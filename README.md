@@ -347,3 +347,17 @@ A commercial license is required to run it (sales@zyvor.dev); a 30-day trial key
 [![Star on GitHub](https://img.shields.io/github/stars/zyvorai/zyvorai-fleet?style=for-the-badge&logo=github&label=Star&color=2997ff)](https://github.com/zyvorai/zyvorai-fleet)
 
 </div>
+
+## Gateway API (optional, Setura)
+
+As an alternative to the Ingress, the chart can expose the service through a Gateway API
+`Gateway` and `HTTPRoute` served by [Setura](https://github.com/zyvorai/zyvor-setura-gateway).
+Install the controller once per cluster, then switch the chart over:
+
+```sh
+setura gateway install --image ghcr.io/zyvorai/zyvor-setura-gateway:0.7.0 --namespace setura-system | kubectl apply -f -
+helm upgrade --install RELEASE CHART_PATH --set gateway.enabled=true --set ingress.enabled=false
+```
+
+Hosts and paths come from the `ingress` values. Set `gateway.tls.enabled=true` and
+`gateway.tls.secretName` to add an HTTPS listener. `gateway.enabled` defaults to `false`.

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Rollout safety (research-driven, see docs/RESEARCH.md)
+
+- Per-site apply timeout: `siteTimeoutSeconds` on rollouts (0 or 30..604800). A site that has not applied the revision in time is failed, counted against `maxFailures`, listed in `timedOutSites` and emits `rollout.site_timeout`; a late apply clears it. Fixes strict waves stalling forever on an offline site. Clock restarts on resume and retry.
+- Canary wave: `canarySize` sizes the first wave only; plan reports the resulting wave count.
+- Revision diff: `GET /api/v1/revisions/diff?from=&to=`, `fleetctl revision-diff`, and a per-current-revision `changes` summary in `POST /api/v1/rollouts/plan` and the console plan preview. Changed fields are reported by name only, never values.
+- Revision content digest (`sha256:`) computed at creation, backfilled for older revisions at read time, verified by the agent before caching and before reconciling (also offline). Mismatch is refused and reported as `revision.digest_mismatch`. Rollout requests may pin `revisionDigest` (409 on mismatch). Integrity only, not a signature.
+- Docs: `docs/ROLLOUT_SAFETY.md`, `docs/RESEARCH.md`; OpenAPI, ARCHITECTURE, README updated.
+
 ### Toolchain and pin upgrades
 
 - Go directive 1.27.0 to 1.27.4; CI test job now runs a matrix of the pinned 1.27.4 floor and newest stable Go.

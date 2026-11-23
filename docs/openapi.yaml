@@ -420,6 +420,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Revision'
+  /api/v1/revisions/diff:
+    get:
+      tags:
+      - Desired state
+      summary: Compare two revisions
+      description: Reports added, removed and changed workloads (changed fields by name only, never values). Omit `from` to compare against an empty site.
+      security:
+      - cookieAuth: []
+      parameters:
+      - {name: from, in: query, schema: {type: string, maxLength: 128}}
+      - {name: to, in: query, required: true, schema: {type: string, maxLength: 128}}
+      responses:
+        '200': {description: Revision diff}
+        '400': {description: Missing or oversize id}
+        '404': {description: Revision not found}
   /api/v1/rollouts:
     get:
       tags:
@@ -497,6 +512,16 @@ paths:
                 includeMaintenance:
                   type: boolean
                   default: false
+                canarySize:
+                  type: integer
+                  minimum: 0
+                  description: Size of the first wave only; later waves use waveSize. Must not exceed the target count and cannot be combined with all-at-once.
+                siteTimeoutSeconds:
+                  type: integer
+                  description: 0 disables. Otherwise 30..604800; an activated site that has not applied the revision this long after its wave started counts as failed.
+                revisionDigest:
+                  type: string
+                  description: Optional pin. The request is rejected with 409 unless it equals the revision content digest.
       responses:
         '201':
           description: Rollout started
@@ -757,7 +782,7 @@ paths:
             schema: *id004
       responses:
         '200':
-          description: Resolved rollout targets, offline count and wave estimate
+          description: Resolved rollout targets, offline count, wave estimate and, when revisionId is given, a per-current-revision change summary (changes, at most 20 groups)
         '400': *id003
   /api/v1/rollouts/{id}/pause:
     post:
@@ -1062,6 +1087,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RuntimeSpec'
+        digest:
+          type: string
+          description: sha256 content digest of the workloads. Integrity check, not a signature.
         createdAt:
           type: string
           format: date-time
@@ -1097,6 +1125,14 @@ components:
           type: integer
         maxFailures:
           type: integer
+        canarySize:
+          type: integer
+        siteTimeoutSeconds:
+          type: integer
+        timedOutSites:
+          type: array
+          items:
+            type: string
         autoRollback:
           type: boolean
         approvalRequired:

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Toolchain and pin upgrades
+
+- Go directive 1.27.0 to 1.27.4; CI test job now runs a matrix of the pinned 1.27.4 floor and newest stable Go.
+- Dockerfile: build stage golang:1.27-alpine3.24 (tag verified on Docker Hub), runtime distroless static-debian13:nonroot (manifest verified on gcr.io).
+- GitHub Actions: checkout v7 (was v4 in ai-review/docs/pages), setup-python v7 (was v5 in soak), setup-buildx v4, build-push v6 to v7, setup-helm v5, download-artifact v7 to v8, cosign-installer v4. Node 22 to 24, Python 3.13 / 3.x to 3.14. govulncheck v1.8.0 to v1.10.0 and kubeconform pinned at v0.8.0 (both from proxy.golang.org).
+- docs: requirements-docs.txt floors mkdocs>=1.6.1, mkdocs-material>=9.8.2 (current PyPI).
+- Held back (not in the verified list, left as is): github/codeql-action v4, softprops/action-gh-release v2, actions/upload-artifact v7. No 1.26.x matrix leg: go.mod requires 1.27.4, so such a leg would only auto-switch toolchains. mkdocs was not built locally (no pip installs on this host), so the docs pin bump is unexercised until CI.
+- Repo own image tag (0.3.0 in Helm/k8s) deliberately untouched.
+
 - `fleetctl status` prints the Cilium-style logo, site/rollout health, and feature rows. `fleetctl status json` is the raw dashboard.
 - `make help`, `make ci`, `make status`, and `make deploy-remote H=<host> U=<user>`.
 

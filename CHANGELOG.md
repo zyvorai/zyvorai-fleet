@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Rollout safety (research-driven, see docs/RESEARCH.md)
+
+- Per-site apply timeout: `siteTimeoutSeconds` on rollouts (0 or 30..604800). A site that has not applied the revision in time is failed, counted against `maxFailures`, listed in `timedOutSites` and emits `rollout.site_timeout`; a late apply clears it. Fixes strict waves stalling forever on an offline site. Clock restarts on resume and retry.
+- Canary wave: `canarySize` sizes the first wave only; plan reports the resulting wave count.
+- Revision diff: `GET /api/v1/revisions/diff?from=&to=`, `fleetctl revision-diff`, and a per-current-revision `changes` summary in `POST /api/v1/rollouts/plan` and the console plan preview. Changed fields are reported by name only, never values.
+- Revision content digest (`sha256:`) computed at creation, backfilled for older revisions at read time, verified by the agent before caching and before reconciling (also offline). Mismatch is refused and reported as `revision.digest_mismatch`. Rollout requests may pin `revisionDigest` (409 on mismatch). Integrity only, not a signature.
+- Docs: `docs/ROLLOUT_SAFETY.md`, `docs/RESEARCH.md`; OpenAPI, ARCHITECTURE, README updated.
+
+### Toolchain and pin upgrades
+
+- Go directive 1.27.0 to 1.27.4; CI test job now runs a matrix of the pinned 1.27.4 floor and newest stable Go.
+- Dockerfile: build stage golang:1.27-alpine3.24 (tag verified on Docker Hub), runtime distroless static-debian13:nonroot (manifest verified on gcr.io).
+- GitHub Actions: checkout v7 (was v4 in ai-review/docs/pages), setup-python v7 (was v5 in soak), setup-buildx v4, build-push v6 to v7, setup-helm v5, download-artifact v7 to v8, cosign-installer v4. Node 22 to 24, Python 3.13 / 3.x to 3.14. govulncheck v1.8.0 to v1.10.0 and kubeconform pinned at v0.8.0 (both from proxy.golang.org).
+- docs: requirements-docs.txt floors mkdocs>=1.6.1, mkdocs-material>=9.8.2 (current PyPI).
+- Held back (not in the verified list, left as is): github/codeql-action v4, softprops/action-gh-release v2, actions/upload-artifact v7. No 1.26.x matrix leg: go.mod requires 1.27.4, so such a leg would only auto-switch toolchains. mkdocs was not built locally (no pip installs on this host), so the docs pin bump is unexercised until CI.
+- Repo own image tag (0.3.0 in Helm/k8s) deliberately untouched.
+
 - `fleetctl status` prints the Cilium-style logo, site/rollout health, and feature rows. `fleetctl status json` is the raw dashboard.
 - `make help`, `make ci`, `make status`, and `make deploy-remote H=<host> U=<user>`.
 

@@ -57,6 +57,8 @@ nav:
       - OTA contract: OTA_CONTRACT.md
       - v0.3 Operations: V0.3_OPERATIONS.md
       - Testing: TESTING.md
+      - Rollout safety: ROLLOUT_SAFETY.md
+      - Research: RESEARCH.md
   - Roadmap:
       - Product plan: PRODUCT_PLAN.md
   - Support: support.md

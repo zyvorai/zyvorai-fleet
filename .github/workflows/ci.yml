@@ -11,16 +11,22 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # go.mod requires 1.27.4, so a 1.26.x leg would only auto-switch
+        # toolchains; test the pinned floor and the newest stable instead.
+        go: ["1.27.4", "stable"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version: ${{ matrix.go }}
           check-latest: true
           cache: false
       - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: "24"
       - name: Formatting
         run: test -z "$(gofmt -l cmd internal webui)"
       - name: Vet
@@ -29,7 +35,7 @@ jobs:
         run: go test -race -coverprofile=coverage.out ./...
       - uses: actions/upload-artifact@v7
         with:
-          name: coverage
+          name: coverage-${{ matrix.go }}
           path: coverage.out
       - name: Web JavaScript syntax
         run: node --check webui/static/app.js
@@ -41,7 +47,7 @@ jobs:
         run: make qualify
       - uses: actions/upload-artifact@v7
         with:
-          name: qualification-software
+          name: qualification-software-${{ matrix.go }}
           path: evidence/qualification/software-matrix.json
           if-no-files-found: error
 
@@ -49,13 +55,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: false
       - name: Install kubeconform
-        run: go install github.com/yannh/kubeconform/cmd/kubeconform@latest
+        run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0
       - run: helm lint deploy/helm/zyvor-fleet
       - name: Helm template + kubeconform
         run: |
@@ -75,7 +81,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
 
   compose-smoke:
     runs-on: ubuntu-latest
@@ -141,8 +147,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
         with:
           context: .
           push: false
@@ -159,7 +165,7 @@ jobs:
           cache: false
       - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: "24"
       - name: Qualify with CI lab-substitute markers
         env:
           FLEET_QUALIFY_FAST: "1"

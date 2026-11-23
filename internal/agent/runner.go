@@ -103,6 +103,12 @@ func (a *Runner) cycle(ctx context.Context) {
 		return
 	}
 
+	// Fail closed on a revision whose body does not match its content digest:
+	// never cache it over a good copy and never hand it to an adapter.
+	if sync.Revision != nil && !a.revisionIntact(*sync.Revision, true) {
+		sync.Revision = nil
+	}
+
 	reconnect := st.ConnectivityLost
 	_ = a.state.Update(func(s *LocalState) {
 		s.LastSync = time.Now().UTC()
@@ -159,7 +165,33 @@ func (a *Runner) cycle(ctx context.Context) {
 	}
 }
 
+// revisionIntact verifies a revision against its content digest. A revision
+// without a digest (older control plane) is accepted. A mismatch is recorded as
+// a failed revision with an error, and queued as an event once per distinct
+// failure when announce is set. The digest detects corruption or tampering of a
+// body in transit or in the local cache; it is not a signature.
+func (a *Runner) revisionIntact(rev model.Revision, announce bool) bool {
+	present, ok := rev.VerifyDigest()
+	if !present || ok {
+		return true
+	}
+	msg := fmt.Sprintf("revision %s content does not match its digest; refusing to apply", rev.ID)
+	previous := a.state.Snapshot()
+	_ = a.state.Update(func(s *LocalState) {
+		s.FailedRevision = rev.ID
+		s.RevisionError = msg
+	})
+	if announce && (previous.FailedRevision != rev.ID || previous.RevisionError != msg) {
+		a.queueEvent("revision.digest_mismatch", "error", msg)
+	}
+	a.cfg.Logger.Error("revision digest mismatch", "revision", rev.ID)
+	return false
+}
+
 func (a *Runner) reconcileRevision(ctx context.Context, rev model.Revision, announce bool) bool {
+	if !a.revisionIntact(rev, announce) {
+		return false
+	}
 	previous := a.state.Snapshot()
 	health := make([]model.WorkloadHealth, 0, len(rev.Workloads))
 	for _, spec := range rev.Workloads {

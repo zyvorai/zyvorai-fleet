@@ -4,7 +4,7 @@ Thanks for improving the edge control plane.
 
 ## Development
 
-Requirements: Go 1.27+ and Node 20+ (Node is used only for JavaScript syntax validation; the product has no npm runtime dependencies).
+Requirements: Go 1.27.4+ and Node 24+ (Node is used only for JavaScript syntax validation; the product has no npm runtime dependencies).
 
 ```bash
 make ci

@@ -74,7 +74,7 @@ Environment:
   FLEET_SSH_RETRIES    SSH retry count (default: 3)
   FLEET_PORT           Listen port (same as --port; preserved across redeploys
                        when neither --port nor FLEET_PORT is set)
-  FLEET_GO_VERSION     Go toolchain to install if missing (default: 1.27.1)
+  FLEET_GO_VERSION     Go toolchain to install if missing (default: 1.27.4)
   DEPLOY_DIR           Override remote staging dir (default: ~/.deployments/zyvor-fleet)
 
 Examples:
@@ -479,10 +479,10 @@ ensure_go_remote() {
         fi
         warn "Go missing on remote — installing anyway"
     fi
-    _ssh env FLEET_GO_VERSION="${FLEET_GO_VERSION:-1.27.1}" FLEET_FORCE_GO_UPGRADE="${FLEET_FORCE_GO_UPGRADE:-}" bash <<'REMOTE'
+    _ssh env FLEET_GO_VERSION="${FLEET_GO_VERSION:-1.27.4}" FLEET_FORCE_GO_UPGRADE="${FLEET_FORCE_GO_UPGRADE:-}" bash <<'REMOTE'
 set -euo pipefail
 export PATH=/usr/local/go/bin:${PATH}
-WANT="${FLEET_GO_VERSION:-1.27.1}"
+WANT="${FLEET_GO_VERSION:-1.27.4}"
 if command -v go >/dev/null 2>&1; then
     ver=$(go env GOVERSION 2>/dev/null || go version)
     case "$ver" in
@@ -491,7 +491,7 @@ if command -v go >/dev/null 2>&1; then
         exit 0
         ;;
     esac
-    # Also accept any patch within the same minor (e.g. want 1.27.1, have go1.27.0)
+    # Also accept any patch within the same minor (e.g. want 1.27.4, have go1.27.0)
     want_minor="${WANT%.*}"
     cur_minor=$(printf '%s' "$ver" | sed -n 's/^go\([0-9]*\.[0-9]*\).*/\1/p')
     if [ "$cur_minor" = "$want_minor" ] && [ "${FLEET_FORCE_GO_UPGRADE:-}" != "1" ]; then

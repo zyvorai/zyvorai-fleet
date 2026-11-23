@@ -120,6 +120,9 @@ A rollout has resolved target sites, strict wave size, optional inter-wave pause
 5. Exceeding `maxFailures` fails the rollout. With `autoRollback`, every activated site is returned to its captured previous revision.
 6. Successful waves honor `pauseSeconds` before the next wave. Operators can pause, resume, abort, retry or manually roll back.
 7. The rollout completes only when all targets are terminal within the configured failure budget.
+8. An optional `canarySize` sizes the first wave only. An optional `siteTimeoutSeconds` fails an activated site that has not applied the revision in time, so one offline site cannot stall a wave forever; the timeout is control-plane accounting and does not change what the site keeps running.
+
+Revisions carry a sha256 content digest of their workloads. The agent refuses to cache or apply a revision whose body does not match it. This is an integrity check, not a signature (see docs/ROLLOUT_SAFETY.md).
 
 Offline sites never falsely complete. They retain the prior cached desired state until they can receive and accept the newer revision.
 

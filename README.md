@@ -47,6 +47,7 @@
 
 | Release | What landed |
 |---|---|
+| **Unreleased** | Rollout safety: per-site apply timeout, canary wave size, revision diff with plan change summary, and sha256 revision digests the agent verifies (integrity, not signatures); research in `docs/RESEARCH.md` |
 | **Unreleased** | OTA devices roll out in canary waves instead of a single assignment, pausing when failure, rollback or offline thresholds trip, with a per-device timeline and recovery guidance |
 | **Unreleased** | `fleetctl status`: logo, site and rollout health, feature rows; `fleetctl status json` for the raw dashboard |
 | **Unreleased** | HA design doc and a short soak CI harness proving single-writer reconnect under WAN and disk pressure (not multi-writer HA) |
@@ -76,7 +77,7 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 - Embedded Zyvor console (no CDN) · email/password + PBKDF2 · signed HttpOnly sessions · RBAC
 - Enrollment tokens → independent per-site identities
 - Live inventory, site cordons, scoped API tokens, HMAC-signed webhooks, bounded audit trail
-- Declarative revisions, dynamic label groups, strict wave rollouts (approval, windows, failure budgets, pause/resume/abort/retry, rollback)
+- Declarative revisions with sha256 content digests, revision diff, dynamic label groups, strict wave rollouts (approval, windows, canary wave, per-site timeout, failure budgets, pause/resume/abort/retry, rollback)
 - Prometheus `/metrics` · single-writer atomic JSON persistence · one `fleetd` binary
 
 ### Offline-first agent
@@ -185,7 +186,8 @@ fleetctl status          # colorful logo; needs a running fleetd
 fleetctl status json
 fleetctl sites | events | revisions | rollouts | groups | audit | webhooks
 fleetctl group-create "Production" env=production,class=factory
-fleetctl rollout-plan GROUP_ID
+fleetctl rollout-plan GROUP_ID [REVISION_ID]   # with a revision: per-site change summary
+fleetctl revision-diff REV_OLD REV_NEW
 fleetctl site-maintenance SITE_ID on "scheduled service"
 fleetctl api-token-create github-ci operator read,rollouts:write
 fleetctl enroll-token "Factory install"
@@ -267,6 +269,8 @@ See [SECURITY.md](SECURITY.md).
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Protocol and failure model |
 | [docs/PRODUCTION.md](docs/PRODUCTION.md) | Production runbook |
 | [docs/OTA_CONTRACT.md](docs/OTA_CONTRACT.md) | OTA assignment + events |
+| [docs/ROLLOUT_SAFETY.md](docs/ROLLOUT_SAFETY.md) | Digests, diffs, canary, site timeouts |
+| [docs/RESEARCH.md](docs/RESEARCH.md) | Field research and ranked ideas |
 | [docs/openapi.yaml](docs/openapi.yaml) | REST API |
 
 Social assets: [docs/social/](docs/social/).

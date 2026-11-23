@@ -81,6 +81,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/api-tokens", s.requireRoles(http.HandlerFunc(s.createAPIToken), model.RoleAdmin))
 	mux.Handle("DELETE /api/v1/api-tokens/{id}", s.requireRoles(http.HandlerFunc(s.deleteAPIToken), model.RoleAdmin))
 	mux.Handle("GET /api/v1/revisions", s.requireAuth(http.HandlerFunc(s.listRevisions)))
+	mux.Handle("GET /api/v1/revisions/diff", s.requireAuth(http.HandlerFunc(s.diffRevisionsHandler)))
 	mux.Handle("POST /api/v1/revisions", s.requireRoles(http.HandlerFunc(s.createRevision), model.RoleAdmin, model.RoleOperator))
 	mux.Handle("GET /api/v1/rollouts", s.requireAuth(http.HandlerFunc(s.listRollouts)))
 	mux.Handle("POST /api/v1/rollouts/plan", s.requireRoles(http.HandlerFunc(s.planRollout), model.RoleAdmin, model.RoleOperator))
@@ -801,7 +802,11 @@ func (s *Server) deleteEnrollmentToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listRevisions(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, 200, s.store.Snapshot().Revisions)
+	revs := s.store.Snapshot().Revisions
+	for i := range revs {
+		revs[i] = withDigest(revs[i])
+	}
+	writeJSON(w, 200, revs)
 }
 
 func (s *Server) createRevision(w http.ResponseWriter, r *http.Request) {
@@ -828,7 +833,7 @@ func (s *Server) createRevision(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	c := claimsFrom(r.Context())
-	rev := model.Revision{ID: newID("rev"), Name: strings.TrimSpace(in.Name), Notes: strings.TrimSpace(in.Notes), Workloads: in.Workloads, CreatedAt: time.Now().UTC(), CreatedBy: c.Email}
+	rev := model.Revision{ID: newID("rev"), Name: strings.TrimSpace(in.Name), Notes: strings.TrimSpace(in.Notes), Workloads: in.Workloads, Digest: model.ComputeRevisionDigest(in.Workloads), CreatedAt: time.Now().UTC(), CreatedBy: c.Email}
 	if err := s.store.Update(func(st *model.State) error { st.Revisions = append(st.Revisions, rev); return nil }); err != nil {
 		writeError(w, 500, "could not save revision")
 		return
@@ -916,6 +921,45 @@ type rolloutRequest struct {
 	StartAt            *time.Time        `json:"startAt"`
 	EndAt              *time.Time        `json:"endAt"`
 	IncludeMaintenance bool              `json:"includeMaintenance"`
+	CanarySize         int               `json:"canarySize"`
+	SiteTimeoutSeconds int               `json:"siteTimeoutSeconds"`
+	// RevisionDigest, when set, pins the rollout: it is rejected unless the
+	// revision's content digest matches (lets CI promote exactly what it tested).
+	RevisionDigest string `json:"revisionDigest"`
+}
+
+const (
+	minSiteTimeoutSeconds = 30
+	maxSiteTimeoutSeconds = 7 * 86400
+)
+
+// waveCount returns how many waves n targets take with an optional smaller
+// first (canary) wave.
+func waveCount(n, canary, wave int) int {
+	if n <= 0 || wave <= 0 {
+		return 0
+	}
+	if canary > 0 {
+		if canary >= n {
+			return 1
+		}
+		n -= canary
+		return 1 + (n+wave-1)/wave
+	}
+	return (n + wave - 1) / wave
+}
+
+func validateWaveOptions(canary, siteTimeout int, strategy string, targets int) error {
+	if canary < 0 || canary > targets {
+		return errors.New("canarySize must be between 0 and the target count")
+	}
+	if canary > 0 && strategy == "all-at-once" {
+		return errors.New("canarySize cannot be combined with the all-at-once strategy")
+	}
+	if siteTimeout != 0 && (siteTimeout < minSiteTimeoutSeconds || siteTimeout > maxSiteTimeoutSeconds) {
+		return fmt.Errorf("siteTimeoutSeconds must be 0 or between %d and %d", minSiteTimeoutSeconds, maxSiteTimeoutSeconds)
+	}
+	return nil
 }
 
 func (s *Server) planRollout(w http.ResponseWriter, r *http.Request) {
@@ -978,11 +1022,21 @@ func (s *Server) planRollout(w http.ResponseWriter, r *http.Request) {
 	if waveSize > len(targets) && len(targets) > 0 {
 		waveSize = len(targets)
 	}
-	waves := 0
-	if waveSize > 0 {
-		waves = (len(targets) + waveSize - 1) / waveSize
+	if err := validateWaveOptions(in.CanarySize, in.SiteTimeoutSeconds, in.Strategy, len(targets)); err != nil {
+		writeError(w, 400, err.Error())
+		return
 	}
-	writeJSON(w, 200, map[string]any{"siteIds": targets, "targets": out, "total": len(targets), "offline": offline, "maintenanceExcluded": maintenanceExcluded, "waveSize": waveSize, "waves": waves})
+	waves := waveCount(len(targets), in.CanarySize, waveSize)
+	resp := map[string]any{"siteIds": targets, "targets": out, "total": len(targets), "offline": offline, "maintenanceExcluded": maintenanceExcluded, "waveSize": waveSize, "waves": waves, "canarySize": in.CanarySize, "siteTimeoutSeconds": in.SiteTimeoutSeconds}
+	if in.RevisionID != "" {
+		if to, ok := findRevision(st, in.RevisionID); ok {
+			changes, truncated := planChanges(st, to, targets)
+			resp["changes"] = changes
+			resp["changesTruncated"] = truncated
+			resp["revisionDigest"] = to.Digest
+		}
+	}
+	writeJSON(w, 200, resp)
 }
 
 func (s *Server) createRollout(w http.ResponseWriter, r *http.Request) {
@@ -1001,6 +1055,10 @@ func (s *Server) createRollout(w http.ResponseWriter, r *http.Request) {
 	}
 	if rev == nil {
 		writeError(w, 400, "revision not found")
+		return
+	}
+	if in.RevisionDigest != "" && in.RevisionDigest != withDigest(*rev).Digest {
+		writeError(w, http.StatusConflict, "revisionDigest does not match the revision content")
 		return
 	}
 	selector, err := normalizeLabels(in.Selector)
@@ -1028,6 +1086,10 @@ func (s *Server) createRollout(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Strategy != "waves" && in.Strategy != "all-at-once" {
 		writeError(w, 400, "strategy must be waves or all-at-once")
+		return
+	}
+	if err := validateWaveOptions(in.CanarySize, in.SiteTimeoutSeconds, in.Strategy, len(targets)); err != nil {
+		writeError(w, 400, err.Error())
 		return
 	}
 	if in.Strategy == "all-at-once" {
@@ -1077,7 +1139,7 @@ func (s *Server) createRollout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	c := claimsFrom(r.Context())
-	ro := model.Rollout{ID: newID("rol"), Name: strings.TrimSpace(in.Name), RevisionID: in.RevisionID, Status: status, Strategy: in.Strategy, WaveSize: in.WaveSize, PauseSeconds: in.PauseSeconds, MaxFailures: in.MaxFailures, AutoRollback: in.AutoRollback, ApprovalRequired: in.ApprovalRequired, StartAt: in.StartAt, EndAt: in.EndAt, SiteIDs: targets, PreviousRevisions: previous, CreatedAt: now, UpdatedAt: now, CreatedBy: c.Email}
+	ro := model.Rollout{ID: newID("rol"), Name: strings.TrimSpace(in.Name), RevisionID: in.RevisionID, Status: status, Strategy: in.Strategy, WaveSize: in.WaveSize, PauseSeconds: in.PauseSeconds, MaxFailures: in.MaxFailures, CanarySize: in.CanarySize, SiteTimeoutSeconds: in.SiteTimeoutSeconds, AutoRollback: in.AutoRollback, ApprovalRequired: in.ApprovalRequired, StartAt: in.StartAt, EndAt: in.EndAt, SiteIDs: targets, PreviousRevisions: previous, CreatedAt: now, UpdatedAt: now, CreatedBy: c.Email}
 	if err := s.store.Update(func(state *model.State) error {
 		state.Rollouts = append(state.Rollouts, ro)
 		idx := len(state.Rollouts) - 1
@@ -1148,6 +1210,7 @@ func (s *Server) transitionRollout(w http.ResponseWriter, r *http.Request, actio
 					ro.Status = "scheduled"
 				} else {
 					ro.Status = "running"
+					restartSiteTimers(ro, now)
 					activateWave(st, ro, now)
 				}
 				ro.UpdatedAt = now
@@ -1192,7 +1255,9 @@ func (s *Server) transitionRollout(w http.ResponseWriter, r *http.Request, actio
 				ro.Status = "running"
 				ro.RolledBack = false
 				ro.FailedSites = nil
+				ro.TimedOutSites = nil
 				ro.NextWaveAt = nil
+				restartSiteTimers(ro, now)
 				ro.UpdatedAt = now
 				for si := range st.Sites {
 					site := &st.Sites[si]
@@ -1410,6 +1475,10 @@ func (s *Server) agentSync(w http.ResponseWriter, r *http.Request) {
 		if c.SiteID == siteID && c.Status == "pending" {
 			commands = append(commands, c)
 		}
+	}
+	if rev != nil {
+		withD := withDigest(*rev)
+		rev = &withD
 	}
 	writeJSON(w, 200, map[string]any{"siteId": siteID, "desiredRevision": site.DesiredRevision, "revision": rev, "commands": commands, "syncAfterSeconds": 15})
 }
@@ -1631,6 +1700,29 @@ func reconcileRolloutsAt(st *model.State, now time.Time) {
 				failed[site.ID] = true
 			}
 		}
+		if ro.SiteTimeoutSeconds > 0 {
+			limit := time.Duration(ro.SiteTimeoutSeconds) * time.Second
+			for _, id := range ro.ActivatedSites {
+				if completed[id] || failed[id] {
+					continue
+				}
+				at, ok := ro.ActivatedAt[id]
+				if !ok || now.Sub(at) < limit {
+					continue
+				}
+				failed[id] = true
+				ro.TimedOutSites = append(ro.TimedOutSites, id)
+				st.Events = appendEvent(st.Events, model.Event{ID: newID("evt"), SiteID: id, Kind: "rollout.site_timeout", Severity: "warning", Message: fmt.Sprintf("%s: site did not apply the revision within %ds", ro.Name, ro.SiteTimeoutSeconds), CreatedAt: now})
+			}
+		}
+		// A site that applied the revision after timing out is no longer timed out.
+		keep := ro.TimedOutSites[:0]
+		for _, id := range ro.TimedOutSites {
+			if !completed[id] {
+				keep = append(keep, id)
+			}
+		}
+		ro.TimedOutSites = keep
 		ro.CompletedSites = keysInOrder(completed, ro.SiteIDs)
 		ro.FailedSites = keysInOrder(failed, ro.SiteIDs)
 
@@ -1710,6 +1802,9 @@ func activateWave(st *model.State, ro *model.Rollout, now time.Time) {
 		failed[id] = true
 	}
 	capacity := ro.WaveSize
+	if ro.CurrentWave == 0 && ro.CanarySize > 0 {
+		capacity = ro.CanarySize
+	}
 	newSites := []string{}
 	for _, id := range ro.SiteIDs {
 		if capacity <= 0 {
@@ -1727,6 +1822,10 @@ func activateWave(st *model.State, ro *model.Rollout, now time.Time) {
 			site.FailedRevision = ""
 			site.RevisionError = ""
 			activated[id] = true
+			if ro.ActivatedAt == nil {
+				ro.ActivatedAt = map[string]time.Time{}
+			}
+			ro.ActivatedAt[id] = now
 			newSites = append(newSites, id)
 			capacity--
 			break
@@ -1739,6 +1838,24 @@ func activateWave(st *model.State, ro *model.Rollout, now time.Time) {
 	ro.CurrentWave++
 	ro.UpdatedAt = now
 	st.Events = appendEvent(st.Events, model.Event{ID: newID("evt"), Kind: "rollout.wave", Severity: "info", Message: fmt.Sprintf("%s activated wave %d for %d site(s)", ro.Name, ro.CurrentWave, len(newSites)), CreatedAt: now})
+}
+
+// restartSiteTimers re-arms the per-site apply timeout for every activated
+// site that is not yet terminal, so time spent paused, awaiting approval or
+// failed does not count against a site.
+func restartSiteTimers(ro *model.Rollout, now time.Time) {
+	if ro.ActivatedAt == nil {
+		return
+	}
+	done := map[string]bool{}
+	for _, id := range ro.CompletedSites {
+		done[id] = true
+	}
+	for _, id := range ro.ActivatedSites {
+		if !done[id] {
+			ro.ActivatedAt[id] = now
+		}
+	}
 }
 
 func rollbackRolloutState(st *model.State, ro *model.Rollout) {

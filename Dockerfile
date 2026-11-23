@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM golang:1.27-alpine AS build
+FROM golang:1.27-alpine3.24 AS build
 WORKDIR /src
 COPY go.mod ./
 COPY cmd ./cmd
@@ -11,7 +11,7 @@ RUN CGO_ENABLED=0 go test ./... && \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/zyvorai/fleet/internal/agent.Version=${VERSION}" -o /out/fleet-agent ./cmd/fleet-agent && \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/fleetctl ./cmd/fleetctl
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 COPY --from=build /out/fleetd /usr/local/bin/fleetd
 COPY --from=build /out/fleet-agent /usr/local/bin/fleet-agent
 COPY --from=build /out/fleetctl /usr/local/bin/fleetctl

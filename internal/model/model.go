@@ -190,36 +190,45 @@ type Revision struct {
 	Name      string        `json:"name"`
 	Notes     string        `json:"notes,omitempty"`
 	Workloads []RuntimeSpec `json:"workloads"`
-	CreatedAt time.Time     `json:"createdAt"`
-	CreatedBy string        `json:"createdBy"`
+	// Digest is the sha256 content digest of Workloads (see ComputeRevisionDigest).
+	Digest    string    `json:"digest,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	CreatedBy string    `json:"createdBy"`
 }
 
 type Rollout struct {
-	ID                string            `json:"id"`
-	Name              string            `json:"name"`
-	RevisionID        string            `json:"revisionId"`
-	Status            string            `json:"status"`
-	Strategy          string            `json:"strategy"`
-	WaveSize          int               `json:"waveSize"`
-	PauseSeconds      int               `json:"pauseSeconds"`
-	MaxFailures       int               `json:"maxFailures"`
-	AutoRollback      bool              `json:"autoRollback"`
-	ApprovalRequired  bool              `json:"approvalRequired"`
-	ApprovedAt        *time.Time        `json:"approvedAt,omitempty"`
-	StartAt           *time.Time        `json:"startAt,omitempty"`
-	EndAt             *time.Time        `json:"endAt,omitempty"`
-	NextWaveAt        *time.Time        `json:"nextWaveAt,omitempty"`
-	CurrentWave       int               `json:"currentWave"`
-	SiteIDs           []string          `json:"siteIds"`
-	ActivatedSites    []string          `json:"activatedSites,omitempty"`
-	CompletedSites    []string          `json:"completedSites,omitempty"`
-	FailedSites       []string          `json:"failedSites,omitempty"`
-	PreviousRevisions map[string]string `json:"previousRevisions,omitempty"`
-	RolledBack        bool              `json:"rolledBack,omitempty"`
-	CreatedAt         time.Time         `json:"createdAt"`
-	CreatedBy         string            `json:"createdBy"`
-	UpdatedAt         time.Time         `json:"updatedAt"`
-	CompletedAt       *time.Time        `json:"completedAt,omitempty"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	RevisionID   string `json:"revisionId"`
+	Status       string `json:"status"`
+	Strategy     string `json:"strategy"`
+	WaveSize     int    `json:"waveSize"`
+	PauseSeconds int    `json:"pauseSeconds"`
+	MaxFailures  int    `json:"maxFailures"`
+	// CanarySize, when >0, sizes the first wave only; later waves use WaveSize.
+	CanarySize int `json:"canarySize,omitempty"`
+	// SiteTimeoutSeconds, when >0, fails an activated site that has not applied
+	// the revision within this many seconds of its wave starting.
+	SiteTimeoutSeconds int                  `json:"siteTimeoutSeconds,omitempty"`
+	ActivatedAt        map[string]time.Time `json:"activatedAt,omitempty"`
+	TimedOutSites      []string             `json:"timedOutSites,omitempty"`
+	AutoRollback       bool                 `json:"autoRollback"`
+	ApprovalRequired   bool                 `json:"approvalRequired"`
+	ApprovedAt         *time.Time           `json:"approvedAt,omitempty"`
+	StartAt            *time.Time           `json:"startAt,omitempty"`
+	EndAt              *time.Time           `json:"endAt,omitempty"`
+	NextWaveAt         *time.Time           `json:"nextWaveAt,omitempty"`
+	CurrentWave        int                  `json:"currentWave"`
+	SiteIDs            []string             `json:"siteIds"`
+	ActivatedSites     []string             `json:"activatedSites,omitempty"`
+	CompletedSites     []string             `json:"completedSites,omitempty"`
+	FailedSites        []string             `json:"failedSites,omitempty"`
+	PreviousRevisions  map[string]string    `json:"previousRevisions,omitempty"`
+	RolledBack         bool                 `json:"rolledBack,omitempty"`
+	CreatedAt          time.Time            `json:"createdAt"`
+	CreatedBy          string               `json:"createdBy"`
+	UpdatedAt          time.Time            `json:"updatedAt"`
+	CompletedAt        *time.Time           `json:"completedAt,omitempty"`
 }
 
 type SiteGroup struct {

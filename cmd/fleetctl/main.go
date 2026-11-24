@@ -107,7 +107,30 @@ func main() {
 			from = ""
 		}
 		printReq(c, *server, "GET", "/api/v1/revisions/diff?from="+url.QueryEscape(from)+"&to="+url.QueryEscape(flag.Arg(2)), nil)
-	case "rollout-pause", "rollout-resume", "rollout-abort", "rollout-approve", "rollout-rollback", "rollout-retry":
+	case "convergence":
+		path := convergencePath("")
+		raw := false
+		for _, a := range flag.Args()[1:] {
+			if a == "json" {
+				raw = true
+			} else {
+				path = convergencePath(a)
+			}
+		}
+		if raw {
+			printReq(c, *server, "GET", path, nil)
+			return
+		}
+		b, err := getJSON(c, *server, path)
+		if err != nil {
+			fail(err)
+		}
+		text, err := formatConvergence(b)
+		if err != nil {
+			fail(err)
+		}
+		fmt.Print(text)
+	case "rollout-pause", "rollout-resume", "rollout-abort", "rollout-approve", "rollout-rollback", "rollout-retry", "rollout-advance":
 		if flag.NArg() < 2 {
 			fail(fmt.Errorf("%s requires ROLLOUT_ID", cmd))
 		}
@@ -197,7 +220,7 @@ func printReq(c *http.Client, server, method, path string, body any) {
 	}
 }
 func usage() {
-	fmt.Fprintln(os.Stderr, "fleetctl [flags] <version|status [json]|sites|events|audit|revisions|rollouts|groups|webhooks|api-tokens|group-create NAME selector|rollout-plan GROUP_ID [REVISION_ID]|revision-diff FROM|- TO|rollout-pause ID|rollout-resume ID|rollout-abort ID|rollout-approve ID|rollout-rollback ID|rollout-retry ID|site-maintenance SITE_ID on|off [reason]|api-token-create NAME ROLE scope[,scope]|enroll-token [name]>")
+	fmt.Fprintln(os.Stderr, "fleetctl [flags] <version|status [json]|sites|events|audit|revisions|rollouts|groups|webhooks|api-tokens|group-create NAME selector|rollout-plan GROUP_ID [REVISION_ID]|revision-diff FROM|- TO|rollout-pause ID|rollout-resume ID|rollout-abort ID|rollout-approve ID|rollout-rollback ID|rollout-retry ID|rollout-advance ID|convergence [REVISION_ID] [json]|site-maintenance SITE_ID on|off [reason]|api-token-create NAME ROLE scope[,scope]|enroll-token [name]>")
 }
 func fail(err error) { fmt.Fprintln(os.Stderr, "fleetctl:", err); os.Exit(1) }
 func envOr(k, v string) string {

@@ -83,6 +83,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/revisions", s.requireAuth(http.HandlerFunc(s.listRevisions)))
 	mux.Handle("GET /api/v1/revisions/diff", s.requireAuth(http.HandlerFunc(s.diffRevisionsHandler)))
 	mux.Handle("POST /api/v1/revisions", s.requireRoles(http.HandlerFunc(s.createRevision), model.RoleAdmin, model.RoleOperator))
+	mux.Handle("GET /api/v1/convergence", s.requireAuth(http.HandlerFunc(s.convergence)))
 	mux.Handle("GET /api/v1/rollouts", s.requireAuth(http.HandlerFunc(s.listRollouts)))
 	mux.Handle("POST /api/v1/rollouts/plan", s.requireRoles(http.HandlerFunc(s.planRollout), model.RoleAdmin, model.RoleOperator))
 	mux.Handle("POST /api/v1/rollouts", s.requireRoles(http.HandlerFunc(s.createRollout), model.RoleAdmin, model.RoleOperator))
@@ -91,6 +92,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/rollouts/{id}/abort", s.requireRoles(http.HandlerFunc(s.abortRollout), model.RoleAdmin, model.RoleOperator))
 	mux.Handle("POST /api/v1/rollouts/{id}/approve", s.requireRoles(http.HandlerFunc(s.approveRollout), model.RoleAdmin))
 	mux.Handle("POST /api/v1/rollouts/{id}/rollback", s.requireRoles(http.HandlerFunc(s.rollbackRollout), model.RoleAdmin, model.RoleOperator))
+	mux.Handle("POST /api/v1/rollouts/{id}/advance", s.requireRoles(http.HandlerFunc(s.advanceRolloutHandler), model.RoleAdmin, model.RoleOperator))
 	mux.Handle("POST /api/v1/rollouts/{id}/retry", s.requireRoles(http.HandlerFunc(s.retryRollout), model.RoleAdmin, model.RoleOperator))
 	mux.Handle("GET /api/v1/events", s.requireAuth(http.HandlerFunc(s.listEvents)))
 	mux.Handle("GET /api/v1/audit", s.requireRoles(http.HandlerFunc(s.listAudit), model.RoleAdmin))
@@ -923,6 +925,10 @@ type rolloutRequest struct {
 	IncludeMaintenance bool              `json:"includeMaintenance"`
 	CanarySize         int               `json:"canarySize"`
 	SiteTimeoutSeconds int               `json:"siteTimeoutSeconds"`
+	MaxFailurePercent  int               `json:"maxFailurePercent"`
+	SiteRetries        int               `json:"siteRetries"`
+	RetryDelaySeconds  int               `json:"retryDelaySeconds"`
+	DailyWindow        string            `json:"dailyWindow"`
 	// RevisionDigest, when set, pins the rollout: it is rejected unless the
 	// revision's content digest matches (lets CI promote exactly what it tested).
 	RevisionDigest string `json:"revisionDigest"`
@@ -1026,8 +1032,12 @@ func (s *Server) planRollout(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, err.Error())
 		return
 	}
+	if err := validateRolloutPolicy(in); err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
 	waves := waveCount(len(targets), in.CanarySize, waveSize)
-	resp := map[string]any{"siteIds": targets, "targets": out, "total": len(targets), "offline": offline, "maintenanceExcluded": maintenanceExcluded, "waveSize": waveSize, "waves": waves, "canarySize": in.CanarySize, "siteTimeoutSeconds": in.SiteTimeoutSeconds}
+	resp := map[string]any{"maxFailurePercent": in.MaxFailurePercent, "siteRetries": in.SiteRetries, "retryDelaySeconds": in.RetryDelaySeconds, "dailyWindow": in.DailyWindow, "siteIds": targets, "targets": out, "total": len(targets), "offline": offline, "maintenanceExcluded": maintenanceExcluded, "waveSize": waveSize, "waves": waves, "canarySize": in.CanarySize, "siteTimeoutSeconds": in.SiteTimeoutSeconds}
 	if in.RevisionID != "" {
 		if to, ok := findRevision(st, in.RevisionID); ok {
 			changes, truncated := planChanges(st, to, targets)
@@ -1092,6 +1102,10 @@ func (s *Server) createRollout(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, err.Error())
 		return
 	}
+	if err := validateRolloutPolicy(in); err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
 	if in.Strategy == "all-at-once" {
 		in.WaveSize = len(targets)
 	}
@@ -1139,7 +1153,7 @@ func (s *Server) createRollout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	c := claimsFrom(r.Context())
-	ro := model.Rollout{ID: newID("rol"), Name: strings.TrimSpace(in.Name), RevisionID: in.RevisionID, Status: status, Strategy: in.Strategy, WaveSize: in.WaveSize, PauseSeconds: in.PauseSeconds, MaxFailures: in.MaxFailures, CanarySize: in.CanarySize, SiteTimeoutSeconds: in.SiteTimeoutSeconds, AutoRollback: in.AutoRollback, ApprovalRequired: in.ApprovalRequired, StartAt: in.StartAt, EndAt: in.EndAt, SiteIDs: targets, PreviousRevisions: previous, CreatedAt: now, UpdatedAt: now, CreatedBy: c.Email}
+	ro := model.Rollout{ID: newID("rol"), Name: strings.TrimSpace(in.Name), RevisionID: in.RevisionID, Status: status, Strategy: in.Strategy, WaveSize: in.WaveSize, PauseSeconds: in.PauseSeconds, MaxFailures: in.MaxFailures, CanarySize: in.CanarySize, SiteTimeoutSeconds: in.SiteTimeoutSeconds, MaxFailurePercent: in.MaxFailurePercent, SiteRetries: in.SiteRetries, RetryDelaySeconds: in.RetryDelaySeconds, DailyWindow: in.DailyWindow, AutoRollback: in.AutoRollback, ApprovalRequired: in.ApprovalRequired, StartAt: in.StartAt, EndAt: in.EndAt, SiteIDs: targets, PreviousRevisions: previous, CreatedAt: now, UpdatedAt: now, CreatedBy: c.Email}
 	if err := s.store.Update(func(state *model.State) error {
 		state.Rollouts = append(state.Rollouts, ro)
 		idx := len(state.Rollouts) - 1
@@ -1178,6 +1192,9 @@ func (s *Server) rollbackRollout(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) retryRollout(w http.ResponseWriter, r *http.Request) {
 	s.transitionRollout(w, r, "retry")
+}
+func (s *Server) advanceRolloutHandler(w http.ResponseWriter, r *http.Request) {
+	s.transitionRollout(w, r, "advance")
 }
 
 func (s *Server) transitionRollout(w http.ResponseWriter, r *http.Request, action string) {
@@ -1245,6 +1262,11 @@ func (s *Server) transitionRollout(w http.ResponseWriter, r *http.Request, actio
 				ro.RolledBack = true
 				ro.Status = "rolled_back"
 				ro.UpdatedAt = now
+			case "advance":
+				if err := advanceRollout(st, ro, now); err != nil {
+					return err
+				}
+				ro.UpdatedAt = now
 			case "retry":
 				if ro.Status != "failed" {
 					return fmt.Errorf("rollout cannot be retried from %s", ro.Status)
@@ -1256,6 +1278,8 @@ func (s *Server) transitionRollout(w http.ResponseWriter, r *http.Request, actio
 				ro.RolledBack = false
 				ro.FailedSites = nil
 				ro.TimedOutSites = nil
+				ro.Retries = nil
+				ro.RetryAt = nil
 				ro.NextWaveAt = nil
 				restartSiteTimers(ro, now)
 				ro.UpdatedAt = now
@@ -1271,7 +1295,7 @@ func (s *Server) transitionRollout(w http.ResponseWriter, r *http.Request, actio
 			default:
 				return errors.New("unknown rollout action")
 			}
-			verbs := map[string]string{"pause": "paused", "resume": "resumed", "abort": "aborted", "approve": "approved", "rollback": "rolled back", "retry": "retried"}
+			verbs := map[string]string{"pause": "paused", "resume": "resumed", "abort": "aborted", "approve": "approved", "rollback": "rolled back", "retry": "retried", "advance": "advanced to its next wave"}
 			st.Events = appendEvent(st.Events, model.Event{ID: newID("evt"), Kind: "rollout." + action, Severity: "info", Message: ro.Name + " " + verbs[action], CreatedAt: now})
 			out = *ro
 			return nil
@@ -1711,10 +1735,14 @@ func reconcileRolloutsAt(st *model.State, now time.Time) {
 					continue
 				}
 				failed[id] = true
+				if _, waiting := ro.RetryAt[id]; waiting {
+					continue // already reported; a retry is scheduled
+				}
 				ro.TimedOutSites = append(ro.TimedOutSites, id)
 				st.Events = appendEvent(st.Events, model.Event{ID: newID("evt"), SiteID: id, Kind: "rollout.site_timeout", Severity: "warning", Message: fmt.Sprintf("%s: site did not apply the revision within %ds", ro.Name, ro.SiteTimeoutSeconds), CreatedAt: now})
 			}
 		}
+		applySiteRetries(st, ro, completed, failed, now)
 		// A site that applied the revision after timing out is no longer timed out.
 		keep := ro.TimedOutSites[:0]
 		for _, id := range ro.TimedOutSites {
@@ -1726,7 +1754,7 @@ func reconcileRolloutsAt(st *model.State, now time.Time) {
 		ro.CompletedSites = keysInOrder(completed, ro.SiteIDs)
 		ro.FailedSites = keysInOrder(failed, ro.SiteIDs)
 
-		if len(ro.FailedSites) > ro.MaxFailures {
+		if failureBudgetExceeded(ro, len(ro.FailedSites)) {
 			ro.Status = "failed"
 			ro.UpdatedAt = now
 			if ro.AutoRollback {
@@ -1749,6 +1777,9 @@ func reconcileRolloutsAt(st *model.State, now time.Time) {
 		}
 
 		if activeRolloutSites(ro) > 0 {
+			continue
+		}
+		if !inDailyWindow(ro.DailyWindow, now) {
 			continue
 		}
 		if len(ro.ActivatedSites) > 0 && ro.PauseSeconds > 0 {
@@ -1785,7 +1816,15 @@ func activeRolloutSites(ro *model.Rollout) int {
 	return active
 }
 
+// activateWave starts the next wave unless the rollout's daily window is closed.
 func activateWave(st *model.State, ro *model.Rollout, now time.Time) {
+	if !inDailyWindow(ro.DailyWindow, now) {
+		return
+	}
+	activateWaveNow(st, ro, now)
+}
+
+func activateWaveNow(st *model.State, ro *model.Rollout, now time.Time) {
 	if ro.Status != "running" {
 		return
 	}

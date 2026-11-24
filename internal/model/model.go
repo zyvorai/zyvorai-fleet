@@ -209,26 +209,37 @@ type Rollout struct {
 	CanarySize int `json:"canarySize,omitempty"`
 	// SiteTimeoutSeconds, when >0, fails an activated site that has not applied
 	// the revision within this many seconds of its wave starting.
-	SiteTimeoutSeconds int                  `json:"siteTimeoutSeconds,omitempty"`
-	ActivatedAt        map[string]time.Time `json:"activatedAt,omitempty"`
-	TimedOutSites      []string             `json:"timedOutSites,omitempty"`
-	AutoRollback       bool                 `json:"autoRollback"`
-	ApprovalRequired   bool                 `json:"approvalRequired"`
-	ApprovedAt         *time.Time           `json:"approvedAt,omitempty"`
-	StartAt            *time.Time           `json:"startAt,omitempty"`
-	EndAt              *time.Time           `json:"endAt,omitempty"`
-	NextWaveAt         *time.Time           `json:"nextWaveAt,omitempty"`
-	CurrentWave        int                  `json:"currentWave"`
-	SiteIDs            []string             `json:"siteIds"`
-	ActivatedSites     []string             `json:"activatedSites,omitempty"`
-	CompletedSites     []string             `json:"completedSites,omitempty"`
-	FailedSites        []string             `json:"failedSites,omitempty"`
-	PreviousRevisions  map[string]string    `json:"previousRevisions,omitempty"`
-	RolledBack         bool                 `json:"rolledBack,omitempty"`
-	CreatedAt          time.Time            `json:"createdAt"`
-	CreatedBy          string               `json:"createdBy"`
-	UpdatedAt          time.Time            `json:"updatedAt"`
-	CompletedAt        *time.Time           `json:"completedAt,omitempty"`
+	SiteTimeoutSeconds int `json:"siteTimeoutSeconds,omitempty"`
+	// MaxFailurePercent (1..99) is a second failure budget, as a share of all
+	// target sites; exceeding either budget fails the rollout.
+	MaxFailurePercent int `json:"maxFailurePercent,omitempty"`
+	// SiteRetries gives a failed or timed-out site this many more attempts
+	// (max 10), RetryDelaySeconds apart, before it counts as failed.
+	SiteRetries       int                  `json:"siteRetries,omitempty"`
+	RetryDelaySeconds int                  `json:"retryDelaySeconds,omitempty"`
+	Retries           map[string]int       `json:"retries,omitempty"`
+	RetryAt           map[string]time.Time `json:"retryAt,omitempty"`
+	// DailyWindow ("HH:MM-HH:MM", UTC) limits when new waves may start.
+	DailyWindow       string               `json:"dailyWindow,omitempty"`
+	ActivatedAt       map[string]time.Time `json:"activatedAt,omitempty"`
+	TimedOutSites     []string             `json:"timedOutSites,omitempty"`
+	AutoRollback      bool                 `json:"autoRollback"`
+	ApprovalRequired  bool                 `json:"approvalRequired"`
+	ApprovedAt        *time.Time           `json:"approvedAt,omitempty"`
+	StartAt           *time.Time           `json:"startAt,omitempty"`
+	EndAt             *time.Time           `json:"endAt,omitempty"`
+	NextWaveAt        *time.Time           `json:"nextWaveAt,omitempty"`
+	CurrentWave       int                  `json:"currentWave"`
+	SiteIDs           []string             `json:"siteIds"`
+	ActivatedSites    []string             `json:"activatedSites,omitempty"`
+	CompletedSites    []string             `json:"completedSites,omitempty"`
+	FailedSites       []string             `json:"failedSites,omitempty"`
+	PreviousRevisions map[string]string    `json:"previousRevisions,omitempty"`
+	RolledBack        bool                 `json:"rolledBack,omitempty"`
+	CreatedAt         time.Time            `json:"createdAt"`
+	CreatedBy         string               `json:"createdBy"`
+	UpdatedAt         time.Time            `json:"updatedAt"`
+	CompletedAt       *time.Time           `json:"completedAt,omitempty"`
 }
 
 type SiteGroup struct {

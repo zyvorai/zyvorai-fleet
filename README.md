@@ -47,6 +47,7 @@
 
 | Release | What landed |
 |---|---|
+| **Unreleased** | Rollout controls: convergence report, percentage failure budget, bounded per-site retries, UTC daily window, manual wave advance |
 | **Unreleased** | Rollout safety: per-site apply timeout, canary wave size, revision diff with plan change summary, and sha256 revision digests the agent verifies (integrity, not signatures); research in `docs/RESEARCH.md` |
 | **Unreleased** | OTA devices roll out in canary waves instead of a single assignment, pausing when failure, rollback or offline thresholds trip, with a per-device timeline and recovery guidance |
 | **Unreleased** | `fleetctl status`: logo, site and rollout health, feature rows; `fleetctl status json` for the raw dashboard |
@@ -188,6 +189,8 @@ fleetctl sites | events | revisions | rollouts | groups | audit | webhooks
 fleetctl group-create "Production" env=production,class=factory
 fleetctl rollout-plan GROUP_ID [REVISION_ID]   # with a revision: per-site change summary
 fleetctl revision-diff REV_OLD REV_NEW
+fleetctl convergence [REV_ID]            # targeted/applied/failed/stale per revision
+fleetctl rollout-advance ROLLOUT_ID      # start the next wave now
 fleetctl site-maintenance SITE_ID on "scheduled service"
 fleetctl api-token-create github-ci operator read,rollouts:write
 fleetctl enroll-token "Factory install"

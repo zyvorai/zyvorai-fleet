@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Rollout controls round 2 (see docs/RESEARCH.md)
+
+- Convergence report: `GET /api/v1/convergence[?revisionId=]` and `fleetctl convergence [REV] [json]` (targeted, applied, failed, pending, offline, stale, converged percent; site ids for a single revision).
+- `maxFailurePercent` failure budget (share of all target sites) alongside `maxFailures`.
+- `siteRetries` (max 10) and `retryDelaySeconds`: failed or timed-out sites are retried before they count; `rollout.site_retry` events and `retries` on the rollout.
+- `dailyWindow` (UTC `HH:MM-HH:MM`, may wrap midnight) gates when new waves start.
+- `POST /api/v1/rollouts/{id}/advance`, `fleetctl rollout-advance` and a console button start the next wave immediately.
+- softprops/action-gh-release v2 to v3 (major; Node 24 runtime, inputs used by release.yml unchanged, verified from its release notes). All other actions, Go 1.27.4, mkdocs and mkdocs-material were already at their latest releases on 2026-11-24; the module has no third-party dependencies.
+- Console rollout form and cards show the new controls; OpenAPI, ROLLOUT_SAFETY and RESEARCH updated.
+
 ### Rollout safety (research-driven, see docs/RESEARCH.md)
 
 - Per-site apply timeout: `siteTimeoutSeconds` on rollouts (0 or 30..604800). A site that has not applied the revision in time is failed, counted against `maxFailures`, listed in `timedOutSites` and emits `rollout.site_timeout`; a late apply clears it. Fixes strict waves stalling forever on an offline site. Clock restarts on resume and retry.
@@ -16,7 +26,7 @@
 - Dockerfile: build stage golang:1.27-alpine3.24 (tag verified on Docker Hub), runtime distroless static-debian13:nonroot (manifest verified on gcr.io).
 - GitHub Actions: checkout v7 (was v4 in ai-review/docs/pages), setup-python v7 (was v5 in soak), setup-buildx v4, build-push v6 to v7, setup-helm v5, download-artifact v7 to v8, cosign-installer v4. Node 22 to 24, Python 3.13 / 3.x to 3.14. govulncheck v1.8.0 to v1.10.0 and kubeconform pinned at v0.8.0 (both from proxy.golang.org).
 - docs: requirements-docs.txt floors mkdocs>=1.6.1, mkdocs-material>=9.8.2 (current PyPI).
-- Held back (not in the verified list, left as is): github/codeql-action v4, softprops/action-gh-release v2, actions/upload-artifact v7. No 1.26.x matrix leg: go.mod requires 1.27.4, so such a leg would only auto-switch toolchains. mkdocs was not built locally (no pip installs on this host), so the docs pin bump is unexercised until CI.
+- Held back earlier (not in the verified list, left as is): github/codeql-action v4, softprops/action-gh-release v2, actions/upload-artifact v7. No 1.26.x matrix leg: go.mod requires 1.27.4, so such a leg would only auto-switch toolchains. mkdocs was not built locally (no pip installs on this host), so the docs pin bump is unexercised until CI.
 - Repo own image tag (0.3.0 in Helm/k8s) deliberately untouched.
 
 - `fleetctl status` prints the Cilium-style logo, site/rollout health, and feature rows. `fleetctl status json` is the raw dashboard.

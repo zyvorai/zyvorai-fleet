@@ -56,6 +56,47 @@ site is terminal, then `pauseSeconds` elapses. It must be between 0 and the
 target count and cannot be combined with `strategy: all-at-once`. The plan
 response reports the resulting `waves` count.
 
+## Failure budgets, retries and windows
+
+Four further controls, researched against AWS IoT Jobs, Eclipse hawkBit, Mender and
+Azure IoT Edge (see `docs/RESEARCH.md`). All are optional and none gives the agent a
+new capability.
+
+- **`maxFailurePercent`** (1..99): a second failure budget as a share of *all*
+  target sites. The rollout fails when failures exceed `maxFailures` **or** this
+  percentage. 2 of 10 sites is exactly 20 percent, not over a 20 percent budget.
+- **`siteRetries`** (0..10) and **`retryDelaySeconds`** (0..3600, requires
+  `siteRetries`): a site that reports failure or times out is held, not counted,
+  for the delay; then its failure is cleared, its timeout clock re-armed, and
+  `rollout.site_retry` is emitted. The agent re-applies on its next cycle. Once
+  retries are used up the failure counts against the budgets. Retry state is
+  reported in `retries`; a manual `retry` resets it.
+- **`dailyWindow`** (`HH:MM-HH:MM`, UTC, may wrap midnight, e.g. `22:00-02:00`):
+  new waves only start inside the window; sites already activated keep going. The
+  pause between waves starts counting once the window is open. Not valid with
+  `all-at-once`. Always evaluated in UTC; there is no DST handling.
+- **Manual advance**: `POST /api/v1/rollouts/{id}/advance` (CLI
+  `fleetctl rollout-advance ID`, console *Advance wave*) starts the next wave now,
+  ignoring the pause, the window and still-running sites. hawkBit added the same
+  manual trigger because a wave can wait forever on offline devices. Only valid for
+  a running rollout with sites left; the failure budgets still apply afterwards.
+
+## Convergence report
+
+`GET /api/v1/convergence[?revisionId=REV]` (any authenticated role) answers "is the
+fleet where we wanted it?", using Azure IoT Edge's Targeted / Applied / Reporting
+Success / Reporting Failure vocabulary. Per revision: `targeted` (sites desiring it),
+`applied`, `failed`, `pending`, `offline` (targeted, not applied, offline), `stale`
+(sites still running it while desiring something else) and `convergedPercent`. With
+`revisionId`, site ids per bucket are included. Sites with no desired revision are
+counted in `unassigned`.
+
+```bash
+fleetctl convergence                 # table for every revision in use
+fleetctl convergence REV_ID          # adds the site ids per bucket
+fleetctl convergence REV_ID json     # raw JSON
+```
+
 ## Per-site apply timeout
 
 Without a timeout, one offline site in a strict wave holds the rollout forever.

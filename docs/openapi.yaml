@@ -435,6 +435,19 @@ paths:
         '200': {description: Revision diff}
         '400': {description: Missing or oversize id}
         '404': {description: Revision not found}
+  /api/v1/convergence:
+    get:
+      tags:
+      - Desired state
+      summary: Fleet convergence report
+      description: Per revision, how many sites target it, have applied it, report it failed, are still pending or offline, or still run it while desiring another (stale). With `revisionId`, site ids per bucket are included (at most 1000 each).
+      security:
+      - cookieAuth: []
+      parameters:
+      - {name: revisionId, in: query, schema: {type: string, maxLength: 128}}
+      responses:
+        '200': {description: Convergence report}
+        '404': {description: Revision not found}
   /api/v1/rollouts:
     get:
       tags:
@@ -519,6 +532,25 @@ paths:
                 siteTimeoutSeconds:
                   type: integer
                   description: 0 disables. Otherwise 30..604800; an activated site that has not applied the revision this long after its wave started counts as failed.
+                maxFailurePercent:
+                  type: integer
+                  minimum: 0
+                  maximum: 99
+                  description: Second failure budget as a share of all target sites. Either this or maxFailures being exceeded fails the rollout. 0 disables.
+                siteRetries:
+                  type: integer
+                  minimum: 0
+                  maximum: 10
+                  description: Extra attempts for a failed or timed-out site before it counts as failed.
+                retryDelaySeconds:
+                  type: integer
+                  minimum: 0
+                  maximum: 3600
+                  description: Wait between a failure and its retry. Requires siteRetries.
+                dailyWindow:
+                  type: string
+                  example: "01:00-05:00"
+                  description: UTC HH:MM-HH:MM window (may wrap midnight) during which new waves may start. Not valid with all-at-once.
                 revisionDigest:
                   type: string
                   description: Optional pin. The request is rejected with 409 unless it equals the revision content digest.
@@ -852,6 +884,25 @@ paths:
                 $ref: '#/components/schemas/Rollout'
         '400': *id003
         '404': *id003
+  /api/v1/rollouts/{id}/advance:
+    post:
+      tags:
+      - Desired state
+      summary: Start the next wave now
+      description: Manual trigger for a running rollout. Ignores the pause, the daily window and still-running sites of the previous wave. 400 when the rollout is not running or every site is already activated.
+      security: *id001
+      parameters:
+      - $ref: '#/components/parameters/ID'
+      - $ref: '#/components/parameters/ZyvorRequest'
+      responses:
+        '200':
+          description: Rollout advanced
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rollout'
+        '400': *id003
+        '404': *id003
   /api/v1/rollouts/{id}/retry:
     post:
       tags:
@@ -1129,6 +1180,17 @@ components:
           type: integer
         siteTimeoutSeconds:
           type: integer
+        maxFailurePercent:
+          type: integer
+        siteRetries:
+          type: integer
+        retryDelaySeconds:
+          type: integer
+        retries:
+          type: object
+          additionalProperties: {type: integer}
+        dailyWindow:
+          type: string
         timedOutSites:
           type: array
           items:

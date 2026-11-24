@@ -70,6 +70,27 @@ offline posture is stronger than any cloud-hub design above.
 | 9 | Recurring maintenance windows (AWS) | Existing start/end window covers one-shot use; recurrence needs timezone handling | Not built |
 | 10 | Remote shell or push-based agent control | Violates the security model | Rejected |
 
+## Round 2 (2026-11-24)
+
+Pages fetched and read: Azure IoT Edge "Monitor IoT Edge deployments", AWS IoT
+Jobs "How job configurations work" (rollout rates, abort thresholds, recurring
+maintenance windows, retries capped at 10 per device), Mender's "deployment
+automation" post (per-device retry count, retries tracked per device) and balena's
+release-policy page (fleet versus device pinning). hawkBit pages redirected or
+returned 404, so its threshold and manual-trigger behaviour is taken from search
+results only **[U]**.
+
+| Idea | Source | Decision |
+|---|---|---|
+| Fleet convergence report (targeted, applied, failed, stale) | Azure IoT Edge metrics | Built (`/api/v1/convergence`, `fleetctl convergence`) |
+| Percentage failure budget | AWS abort config, hawkBit error threshold | Built (`maxFailurePercent`) |
+| Bounded per-site retries with delay | AWS (max 10), Mender | Built (`siteRetries`, `retryDelaySeconds`) |
+| Recurring window | AWS recurring maintenance window | Built as a UTC daily window; no cron, no timezones |
+| Manual next-wave trigger | hawkBit **[U]** | Built (`advance`) |
+| Release pinning per device | balena | Not built: Fleet already pins per site through cordons and explicit site lists |
+| Exponential rollout rate | AWS | Not built |
+| Success-percentage trigger thresholds | hawkBit | Not built; strict waves plus `advance` cover the stall case |
+
 ## Sources not read
 
 Open Horizon, Balena, KubeEdge, Akri, Flux and Mender's own documentation

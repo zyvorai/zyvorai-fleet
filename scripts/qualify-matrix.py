@@ -13,6 +13,9 @@ from datetime import datetime, timezone
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 EVIDENCE = ROOT / "evidence" / "qualification"
+# Go steps compile and fsync heavily and are slow on a shared or rotating disk;
+# the bound only has to catch a real hang.
+GO_TIMEOUT = 1800
 
 
 def run(cmd, **kwargs):
@@ -44,13 +47,13 @@ def main():
         proc = run(["sh", "-c", 'test -z "$(gofmt -l cmd internal webui)"'])
         row(results, "gofmt", "pass" if proc.returncode == 0 else "fail", (proc.stdout + proc.stderr)[-200:])
 
-        proc = run(["go", "vet", "./..."], timeout=120)
+        proc = run(["go", "vet", "./..."], timeout=GO_TIMEOUT)
         row(results, "go_vet", "pass" if proc.returncode == 0 else "fail", (proc.stdout + proc.stderr)[-300:])
 
-        proc = run(["go", "test", "-race", "./..."], timeout=300)
+        proc = run(["go", "test", "-race", "./..."], timeout=GO_TIMEOUT)
         row(results, "unit_race", "pass" if proc.returncode == 0 else "fail", (proc.stdout + proc.stderr)[-400:])
 
-        proc = run(["go", "test", "./internal/server/", "-count=1", "-run", "OTA"], timeout=120)
+        proc = run(["go", "test", "./internal/server/", "-count=1", "-run", "OTA"], timeout=GO_TIMEOUT)
         row(results, "ota_contract", "pass" if proc.returncode == 0 else "fail", (proc.stdout + proc.stderr)[-300:])
 
         proc = run(["node", "--check", "webui/static/app.js"], timeout=30)
@@ -61,10 +64,10 @@ def main():
         else:
             row(results, "web_js_syntax", "fail", proc.stderr[-200:])
 
-        proc = run(["make", "build"], timeout=180)
+        proc = run(["make", "build"], timeout=GO_TIMEOUT)
         row(results, "build_binaries", "pass" if proc.returncode == 0 else "fail", (proc.stdout + proc.stderr)[-300:])
 
-        proc = run(["python3", "scripts/live-smoke.py"], timeout=180)
+        proc = run(["python3", "scripts/live-smoke.py"], timeout=GO_TIMEOUT)
         row(results, "live_smoke", "pass" if proc.returncode == 0 else "fail", (proc.stdout + proc.stderr)[-400:])
 
         proc = run(["bash", "scripts/restore-drill.sh"], timeout=60)

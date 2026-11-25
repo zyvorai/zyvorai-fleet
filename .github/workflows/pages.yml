@@ -23,16 +23,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.14"
+          python-version: "3.15"
           cache: pip
           cache-dependency-path: requirements-docs.txt
       - name: Install MkDocs
@@ -47,5 +44,16 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _pages
+
+  # A separate job: deploy-pages has failed with "No artifacts named
+  # github-pages" when it ran in the same job milliseconds after the upload,
+  # and a separate job can be re-run on its own.
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v5

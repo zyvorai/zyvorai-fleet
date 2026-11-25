@@ -94,6 +94,10 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/rollouts/{id}/rollback", s.requireRoles(http.HandlerFunc(s.rollbackRollout), model.RoleAdmin, model.RoleOperator))
 	mux.Handle("POST /api/v1/rollouts/{id}/advance", s.requireRoles(http.HandlerFunc(s.advanceRolloutHandler), model.RoleAdmin, model.RoleOperator))
 	mux.Handle("POST /api/v1/rollouts/{id}/retry", s.requireRoles(http.HandlerFunc(s.retryRollout), model.RoleAdmin, model.RoleOperator))
+	mux.Handle("GET /api/v1/rollouts/{id}/sites", s.requireAuth(http.HandlerFunc(s.rolloutSites)))
+	mux.Handle("GET /api/v1/freezes", s.requireAuth(http.HandlerFunc(s.listFreezes)))
+	mux.Handle("POST /api/v1/freezes", s.requireRoles(http.HandlerFunc(s.createFreeze), model.RoleAdmin))
+	mux.Handle("DELETE /api/v1/freezes/{id}", s.requireRoles(http.HandlerFunc(s.deleteFreeze), model.RoleAdmin))
 	mux.Handle("GET /api/v1/events", s.requireAuth(http.HandlerFunc(s.listEvents)))
 	mux.Handle("GET /api/v1/audit", s.requireRoles(http.HandlerFunc(s.listAudit), model.RoleAdmin))
 	mux.Handle("GET /api/v1/webhooks", s.requireRoles(http.HandlerFunc(s.listWebhooks), model.RoleAdmin))
@@ -590,7 +594,15 @@ func (s *Server) createSiteGroup(w http.ResponseWriter, r *http.Request) {
 func (s *Server) deleteSiteGroup(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	found := false
+	var frozenBy string
 	err := s.store.Update(func(st *model.State) error {
+		// Deleting the group would silently lift a freeze scoped to it.
+		for _, f := range st.Freezes {
+			if f.GroupID == id && f.EndAt.After(time.Now()) {
+				frozenBy = f.Name
+				return errors.New("group is referenced by a change freeze")
+			}
+		}
 		out := st.SiteGroups[:0]
 		for _, g := range st.SiteGroups {
 			if g.ID == id {
@@ -602,6 +614,10 @@ func (s *Server) deleteSiteGroup(w http.ResponseWriter, r *http.Request) {
 		st.SiteGroups = out
 		return nil
 	})
+	if frozenBy != "" {
+		writeError(w, http.StatusConflict, "group is referenced by change freeze "+frozenBy+"; delete the freeze first")
+		return
+	}
 	if err != nil {
 		writeError(w, 500, "could not delete group")
 		return
@@ -929,6 +945,14 @@ type rolloutRequest struct {
 	SiteRetries        int               `json:"siteRetries"`
 	RetryDelaySeconds  int               `json:"retryDelaySeconds"`
 	DailyWindow        string            `json:"dailyWindow"`
+	MinHealthySeconds  int               `json:"minHealthySeconds"`
+	RingLabel          string            `json:"ringLabel"`
+	RingOrder          []string          `json:"ringOrder"`
+	// ConflictPolicy is reject (default), supersede or allow.
+	ConflictPolicy string `json:"conflictPolicy"`
+	// OverrideFreeze (admin only, reason required) ignores change freezes.
+	OverrideFreeze bool   `json:"overrideFreeze"`
+	OverrideReason string `json:"overrideReason"`
 	// RevisionDigest, when set, pins the rollout: it is rejected unless the
 	// revision's content digest matches (lets CI promote exactly what it tested).
 	RevisionDigest string `json:"revisionDigest"`
@@ -1036,8 +1060,35 @@ func (s *Server) planRollout(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, err.Error())
 		return
 	}
+	if err := validateRings(in); err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
+	now := time.Now().UTC()
+	if err := validateConflictPolicy(in, now); err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
 	waves := waveCount(len(targets), in.CanarySize, waveSize)
-	resp := map[string]any{"maxFailurePercent": in.MaxFailurePercent, "siteRetries": in.SiteRetries, "retryDelaySeconds": in.RetryDelaySeconds, "dailyWindow": in.DailyWindow, "siteIds": targets, "targets": out, "total": len(targets), "offline": offline, "maintenanceExcluded": maintenanceExcluded, "waveSize": waveSize, "waves": waves, "canarySize": in.CanarySize, "siteTimeoutSeconds": in.SiteTimeoutSeconds}
+	ordered, _, rings := assignRings(st, targets, in.RingLabel, in.RingOrder)
+	if rings != nil {
+		waves = ringWaveCount(rings, in.CanarySize, waveSize)
+		targets = ordered
+	}
+	startsAt := now
+	if in.StartAt != nil && in.StartAt.After(now) {
+		startsAt = *in.StartAt
+	}
+	frozen, frozenTargets := frozenSites(&st, startsAt), []string{}
+	for _, id := range targets {
+		if frozen[id] {
+			frozenTargets = append(frozenTargets, id)
+		}
+	}
+	resp := map[string]any{"minHealthySeconds": in.MinHealthySeconds, "frozenSites": frozenTargets, "conflicts": findConflicts(st, targets, in.StartAt, in.EndAt, "", now), "maxFailurePercent": in.MaxFailurePercent, "siteRetries": in.SiteRetries, "retryDelaySeconds": in.RetryDelaySeconds, "dailyWindow": in.DailyWindow, "siteIds": targets, "targets": out, "total": len(targets), "offline": offline, "maintenanceExcluded": maintenanceExcluded, "waveSize": waveSize, "waves": waves, "canarySize": in.CanarySize, "siteTimeoutSeconds": in.SiteTimeoutSeconds}
+	if rings != nil {
+		resp["rings"] = rings
+	}
 	if in.RevisionID != "" {
 		if to, ok := findRevision(st, in.RevisionID); ok {
 			changes, truncated := planChanges(st, to, targets)
@@ -1106,6 +1157,10 @@ func (s *Server) createRollout(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, err.Error())
 		return
 	}
+	if err := validateRings(in); err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
 	if in.Strategy == "all-at-once" {
 		in.WaveSize = len(targets)
 	}
@@ -1128,6 +1183,26 @@ func (s *Server) createRollout(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(in.Name) == "" {
 		in.Name = rev.Name + " rollout"
+	}
+	if err := validateConflictPolicy(in, now); err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
+	if in.ConflictPolicy == "" {
+		in.ConflictPolicy = conflictReject
+	}
+	c := claimsFrom(r.Context())
+	in.OverrideReason = strings.TrimSpace(in.OverrideReason)
+	switch {
+	case in.OverrideFreeze && c.Role != model.RoleAdmin:
+		writeError(w, http.StatusForbidden, "only an admin may override a change freeze")
+		return
+	case in.OverrideFreeze && (in.OverrideReason == "" || len(in.OverrideReason) > maxFreezeReason):
+		writeError(w, 400, fmt.Sprintf("overrideReason of 1 to %d characters is required with overrideFreeze", maxFreezeReason))
+		return
+	case !in.OverrideFreeze && in.OverrideReason != "":
+		writeError(w, 400, "overrideReason requires overrideFreeze")
+		return
 	}
 	status := "running"
 	if in.ApprovalRequired {
@@ -1152,17 +1227,35 @@ func (s *Server) createRollout(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	c := claimsFrom(r.Context())
-	ro := model.Rollout{ID: newID("rol"), Name: strings.TrimSpace(in.Name), RevisionID: in.RevisionID, Status: status, Strategy: in.Strategy, WaveSize: in.WaveSize, PauseSeconds: in.PauseSeconds, MaxFailures: in.MaxFailures, CanarySize: in.CanarySize, SiteTimeoutSeconds: in.SiteTimeoutSeconds, MaxFailurePercent: in.MaxFailurePercent, SiteRetries: in.SiteRetries, RetryDelaySeconds: in.RetryDelaySeconds, DailyWindow: in.DailyWindow, AutoRollback: in.AutoRollback, ApprovalRequired: in.ApprovalRequired, StartAt: in.StartAt, EndAt: in.EndAt, SiteIDs: targets, PreviousRevisions: previous, CreatedAt: now, UpdatedAt: now, CreatedBy: c.Email}
+	targets, siteRings, _ := assignRings(st, targets, in.RingLabel, in.RingOrder)
+	ro := model.Rollout{MinHealthySeconds: in.MinHealthySeconds, RingLabel: in.RingLabel, RingOrder: in.RingOrder, SiteRings: siteRings, ConflictPolicy: in.ConflictPolicy, OverrideFreeze: in.OverrideFreeze, OverrideReason: in.OverrideReason, ID: newID("rol"), Name: strings.TrimSpace(in.Name), RevisionID: in.RevisionID, Status: status, Strategy: in.Strategy, WaveSize: in.WaveSize, PauseSeconds: in.PauseSeconds, MaxFailures: in.MaxFailures, CanarySize: in.CanarySize, SiteTimeoutSeconds: in.SiteTimeoutSeconds, MaxFailurePercent: in.MaxFailurePercent, SiteRetries: in.SiteRetries, RetryDelaySeconds: in.RetryDelaySeconds, DailyWindow: in.DailyWindow, AutoRollback: in.AutoRollback, ApprovalRequired: in.ApprovalRequired, StartAt: in.StartAt, EndAt: in.EndAt, SiteIDs: targets, PreviousRevisions: previous, CreatedAt: now, UpdatedAt: now, CreatedBy: c.Email}
 	if err := s.store.Update(func(state *model.State) error {
+		// Settle finished rollouts first so they are not reported as conflicts.
+		reconcileRolloutsAt(state, now)
+		if ro.ConflictPolicy != conflictAllow {
+			conflicts := findConflicts(*state, ro.SiteIDs, ro.StartAt, ro.EndAt, "", now)
+			if len(conflicts) > 0 {
+				if ro.ConflictPolicy != conflictSupersede {
+					return newOverlapError(conflicts)
+				}
+				supersedeRollouts(state, conflicts, ro.ID, now)
+			}
+		}
 		state.Rollouts = append(state.Rollouts, ro)
 		idx := len(state.Rollouts) - 1
+		if ro.OverrideFreeze {
+			state.Events = appendEvent(state.Events, model.Event{ID: newID("evt"), Kind: "rollout.freeze_override", Severity: "warning", Message: fmt.Sprintf("%s overrides change freezes: %s", ro.Name, ro.OverrideReason), Details: map[string]string{"actor": c.Email, "rolloutId": ro.ID}, CreatedAt: now})
+		}
 		if state.Rollouts[idx].Status == "running" {
 			activateWave(state, &state.Rollouts[idx], now)
+			refreshHold(state, &state.Rollouts[idx], now)
 		}
 		state.Events = appendEvent(state.Events, model.Event{ID: newID("evt"), Kind: "rollout.started", Severity: "info", Message: fmt.Sprintf("%s created for %d sites (%s)", ro.Name, len(ro.SiteIDs), ro.Status), CreatedAt: now})
 		return nil
 	}); err != nil {
+		if writeConflict(w, err) {
+			return
+		}
 		writeError(w, 500, "could not start rollout")
 		return
 	}
@@ -1229,6 +1322,7 @@ func (s *Server) transitionRollout(w http.ResponseWriter, r *http.Request, actio
 					ro.Status = "running"
 					restartSiteTimers(ro, now)
 					activateWave(st, ro, now)
+					refreshHold(st, ro, now)
 				}
 				ro.UpdatedAt = now
 			case "abort":
@@ -1250,6 +1344,7 @@ func (s *Server) transitionRollout(w http.ResponseWriter, r *http.Request, actio
 				} else {
 					ro.Status = "running"
 					activateWave(st, ro, now)
+					refreshHold(st, ro, now)
 				}
 				ro.UpdatedAt = now
 			case "rollback":
@@ -1274,8 +1369,24 @@ func (s *Server) transitionRollout(w http.ResponseWriter, r *http.Request, actio
 				if ro.EndAt != nil && !ro.EndAt.After(now) {
 					return errors.New("rollout maintenance window has ended")
 				}
+				if ro.ConflictPolicy != conflictAllow {
+					if conflicts := findConflicts(*st, ro.SiteIDs, ro.StartAt, ro.EndAt, ro.ID, now); len(conflicts) > 0 {
+						return newOverlapError(conflicts)
+					}
+				}
+				if !ro.OverrideFreeze {
+					frozen, activated := frozenSites(st, now), idSet(ro.ActivatedSites)
+					for _, site := range st.Sites {
+						// Only a change of desired revision is blocked, for
+						// example after an automatic rollback.
+						if frozen[site.ID] && activated[site.ID] && site.DesiredRevision != ro.RevisionID {
+							return &conflictError{msg: "a site to be retried is under a change freeze"}
+						}
+					}
+				}
 				ro.Status = "running"
 				ro.RolledBack = false
+				ro.HealthySince = nil
 				ro.FailedSites = nil
 				ro.TimedOutSites = nil
 				ro.Retries = nil
@@ -1283,14 +1394,17 @@ func (s *Server) transitionRollout(w http.ResponseWriter, r *http.Request, actio
 				ro.NextWaveAt = nil
 				restartSiteTimers(ro, now)
 				ro.UpdatedAt = now
+				done := idSet(ro.CompletedSites)
 				for si := range st.Sites {
 					site := &st.Sites[si]
 					if !contains(ro.ActivatedSites, site.ID) {
 						continue
 					}
-					site.DesiredRevision = ro.RevisionID
-					site.FailedRevision = ""
-					site.RevisionError = ""
+					if done[site.ID] && site.DesiredRevision == ro.RevisionID {
+						site.FailedRevision, site.RevisionError = "", ""
+						continue
+					}
+					retrySite(site, ro.RevisionID)
 				}
 			default:
 				return errors.New("unknown rollout action")
@@ -1303,6 +1417,9 @@ func (s *Server) transitionRollout(w http.ResponseWriter, r *http.Request, actio
 		return errors.New("rollout not found")
 	})
 	if err != nil {
+		if writeConflict(w, err) {
+			return
+		}
 		status := 400
 		if !found {
 			status = 404
@@ -1311,6 +1428,20 @@ func (s *Server) transitionRollout(w http.ResponseWriter, r *http.Request, actio
 		return
 	}
 	writeJSON(w, 200, out)
+}
+
+// writeConflict answers 409 for a conflictError and reports whether it did.
+func writeConflict(w http.ResponseWriter, err error) bool {
+	var conflict *conflictError
+	if !errors.As(err, &conflict) {
+		return false
+	}
+	body := map[string]any{"error": conflict.msg, "status": http.StatusConflict}
+	if len(conflict.conflicts) > 0 {
+		body["conflicts"] = conflict.conflicts
+	}
+	writeJSON(w, http.StatusConflict, body)
+	return true
 }
 
 func (s *Server) listEvents(w http.ResponseWriter, r *http.Request) {
@@ -1430,6 +1561,11 @@ func (s *Server) agentHeartbeat(w http.ResponseWriter, r *http.Request) {
 				site.AgentVersion = in.AgentVersion
 				site.QueuedEvents = in.QueuedEvents
 				site.AutonomyMode = in.AutonomyMode
+				// A retried site that has not synced since is still describing
+				// the attempt the retry replaced.
+				if site.AwaitingSync && in.FailedRevision == site.DesiredRevision {
+					in.FailedRevision, in.RevisionError = "", ""
+				}
 				site.FailedRevision = in.FailedRevision
 				site.RevisionError = strings.TrimSpace(in.RevisionError)
 				site.WorkloadHealth = append([]model.WorkloadHealth(nil), in.WorkloadHealth...)
@@ -1474,6 +1610,24 @@ func (s *Server) agentSync(w http.ResponseWriter, r *http.Request) {
 	}
 	s.markOfflineAndReconcile()
 	st := s.store.Snapshot()
+	for i := range st.Sites {
+		if st.Sites[i].ID != siteID || !st.Sites[i].AwaitingSync {
+			continue
+		}
+		if err := s.store.Update(func(state *model.State) error {
+			for j := range state.Sites {
+				if state.Sites[j].ID == siteID {
+					state.Sites[j].AwaitingSync = false
+				}
+			}
+			return nil
+		}); err != nil {
+			writeError(w, 500, "could not record sync")
+			return
+		}
+		st = s.store.Snapshot()
+		break
+	}
 	var site *model.Site
 	for i := range st.Sites {
 		if st.Sites[i].ID == siteID {
@@ -1698,32 +1852,17 @@ func reconcileRolloutsAt(st *model.State, now time.Time) {
 			}
 		}
 		if ro.Status != "running" {
+			ro.HeldSites, ro.HeldByFreeze, ro.SoakingSites = nil, false, nil
 			continue
 		}
 		if ro.EndAt != nil && !ro.EndAt.After(now) {
 			ro.Status = "expired"
 			ro.UpdatedAt = now
+			ro.HeldSites, ro.HeldByFreeze, ro.SoakingSites = nil, false, nil
 			continue
 		}
 
-		completed := map[string]bool{}
-		failed := map[string]bool{}
-		for _, id := range ro.FailedSites {
-			failed[id] = true
-		}
-		for _, site := range st.Sites {
-			if !contains(ro.SiteIDs, site.ID) {
-				continue
-			}
-			if site.AppliedRevision == ro.RevisionID {
-				completed[site.ID] = true
-				delete(failed, site.ID)
-				continue
-			}
-			if site.FailedRevision == ro.RevisionID {
-				failed[site.ID] = true
-			}
-		}
+		completed, failed, soaking := evaluateSites(st, ro, now)
 		if ro.SiteTimeoutSeconds > 0 {
 			limit := time.Duration(ro.SiteTimeoutSeconds) * time.Second
 			for _, id := range ro.ActivatedSites {
@@ -1731,15 +1870,25 @@ func reconcileRolloutsAt(st *model.State, now time.Time) {
 					continue
 				}
 				at, ok := ro.ActivatedAt[id]
-				if !ok || now.Sub(at) < limit {
+				if !ok {
+					continue
+				}
+				deadline, missed := at.Add(limit), "apply the revision"
+				if since, healthy := ro.HealthySince[id]; healthy && soaking[id] {
+					// Applied: the site now has the soak plus the timeout to
+					// report that it stayed healthy.
+					deadline, missed = since.Add(time.Duration(ro.MinHealthySeconds)*time.Second+limit), "confirm it stayed healthy"
+				}
+				if now.Before(deadline) {
 					continue
 				}
 				failed[id] = true
+				delete(soaking, id)
 				if _, waiting := ro.RetryAt[id]; waiting {
 					continue // already reported; a retry is scheduled
 				}
 				ro.TimedOutSites = append(ro.TimedOutSites, id)
-				st.Events = appendEvent(st.Events, model.Event{ID: newID("evt"), SiteID: id, Kind: "rollout.site_timeout", Severity: "warning", Message: fmt.Sprintf("%s: site did not apply the revision within %ds", ro.Name, ro.SiteTimeoutSeconds), CreatedAt: now})
+				st.Events = appendEvent(st.Events, model.Event{ID: newID("evt"), SiteID: id, Kind: "rollout.site_timeout", Severity: "warning", Message: fmt.Sprintf("%s: site did not %s within %ds", ro.Name, missed, ro.SiteTimeoutSeconds), CreatedAt: now})
 			}
 		}
 		applySiteRetries(st, ro, completed, failed, now)
@@ -1753,10 +1902,17 @@ func reconcileRolloutsAt(st *model.State, now time.Time) {
 		ro.TimedOutSites = keep
 		ro.CompletedSites = keysInOrder(completed, ro.SiteIDs)
 		ro.FailedSites = keysInOrder(failed, ro.SiteIDs)
+		ro.SoakingSites = nil
+		for _, id := range ro.SiteIDs {
+			if soaking[id] && !failed[id] {
+				ro.SoakingSites = append(ro.SoakingSites, id)
+			}
+		}
 
 		if failureBudgetExceeded(ro, len(ro.FailedSites)) {
 			ro.Status = "failed"
 			ro.UpdatedAt = now
+			ro.HeldSites, ro.HeldByFreeze, ro.SoakingSites = nil, false, nil
 			if ro.AutoRollback {
 				rollbackRolloutState(st, ro)
 				ro.RolledBack = true
@@ -1773,10 +1929,11 @@ func reconcileRolloutsAt(st *model.State, now time.Time) {
 			}
 			ro.UpdatedAt = now
 			ro.CompletedAt = &now
+			ro.HeldSites, ro.HeldByFreeze, ro.SoakingSites = nil, false, nil
 			continue
 		}
 
-		if activeRolloutSites(ro) > 0 {
+		if refreshHold(st, ro, now) || activeRolloutSites(ro) > 0 {
 			continue
 		}
 		if !inDailyWindow(ro.DailyWindow, now) {
@@ -1828,55 +1985,38 @@ func activateWaveNow(st *model.State, ro *model.Rollout, now time.Time) {
 	if ro.Status != "running" {
 		return
 	}
-	activated := map[string]bool{}
-	completed := map[string]bool{}
-	failed := map[string]bool{}
-	for _, id := range ro.ActivatedSites {
-		activated[id] = true
-	}
-	for _, id := range ro.CompletedSites {
-		completed[id] = true
-	}
-	for _, id := range ro.FailedSites {
-		failed[id] = true
-	}
 	capacity := ro.WaveSize
 	if ro.CurrentWave == 0 && ro.CanarySize > 0 {
 		capacity = ro.CanarySize
 	}
-	newSites := []string{}
-	for _, id := range ro.SiteIDs {
-		if capacity <= 0 {
-			break
-		}
-		if activated[id] || completed[id] || failed[id] {
-			continue
-		}
-		for i := range st.Sites {
-			site := &st.Sites[i]
-			if site.ID != id {
-				continue
-			}
-			site.DesiredRevision = ro.RevisionID
-			site.FailedRevision = ""
-			site.RevisionError = ""
-			activated[id] = true
-			if ro.ActivatedAt == nil {
-				ro.ActivatedAt = map[string]time.Time{}
-			}
-			ro.ActivatedAt[id] = now
-			newSites = append(newSites, id)
-			capacity--
-			break
-		}
+	eligible, _ := nextWaveCandidates(st, ro, now)
+	if len(eligible) > capacity {
+		eligible = eligible[:max(capacity, 0)]
 	}
-	if len(newSites) == 0 {
+	if len(eligible) == 0 {
 		return
 	}
-	ro.ActivatedSites = keysInOrder(activated, ro.SiteIDs)
+	starting := idSet(eligible)
+	for i := range st.Sites {
+		site := &st.Sites[i]
+		if !starting[site.ID] {
+			continue
+		}
+		site.DesiredRevision = ro.RevisionID
+		site.FailedRevision = ""
+		site.RevisionError = ""
+		if ro.ActivatedAt == nil {
+			ro.ActivatedAt = map[string]time.Time{}
+		}
+		ro.ActivatedAt[site.ID] = now
+	}
+	for _, id := range ro.ActivatedSites {
+		starting[id] = true
+	}
+	ro.ActivatedSites = keysInOrder(starting, ro.SiteIDs)
 	ro.CurrentWave++
 	ro.UpdatedAt = now
-	st.Events = appendEvent(st.Events, model.Event{ID: newID("evt"), Kind: "rollout.wave", Severity: "info", Message: fmt.Sprintf("%s activated wave %d for %d site(s)", ro.Name, ro.CurrentWave, len(newSites)), CreatedAt: now})
+	st.Events = appendEvent(st.Events, model.Event{ID: newID("evt"), Kind: "rollout.wave", Severity: "info", Message: fmt.Sprintf("%s activated wave %d for %d site(s)", ro.Name, ro.CurrentWave, len(eligible)), CreatedAt: now})
 }
 
 // restartSiteTimers re-arms the per-site apply timeout for every activated

@@ -547,6 +547,29 @@ paths:
                   minimum: 0
                   maximum: 3600
                   description: Wait between a failure and its retry. Requires siteRetries.
+                minHealthySeconds:
+                  type: integer
+                  minimum: 0
+                  maximum: 86400
+                  description: A site completes only after staying healthy this long, confirmed by a heartbeat.
+                ringLabel:
+                  type: string
+                  description: Site label whose value selects a ring; requires ringOrder.
+                ringOrder:
+                  type: array
+                  maxItems: 20
+                  items:
+                    type: string
+                conflictPolicy:
+                  type: string
+                  enum: [reject, supersede, allow]
+                  default: reject
+                overrideFreeze:
+                  type: boolean
+                  description: Admin only. Ignore change freezes.
+                overrideReason:
+                  type: string
+                  maxLength: 240
                 dailyWindow:
                   type: string
                   example: "01:00-05:00"
@@ -561,6 +584,110 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Rollout'
+        '403':
+          description: overrideFreeze requires the admin role
+        '409':
+          description: Revision digest mismatch, or a target site belongs to an unfinished rollout
+  /api/v1/rollouts/{id}/sites:
+    get:
+      tags:
+      - Desired state
+      operationId: rolloutSites
+      summary: Per-site status of a rollout
+      security:
+      - cookieAuth: []
+      - apiTokenAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: One state per target site
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RolloutSites'
+        '404':
+          $ref: '#/components/responses/Error'
+  /api/v1/freezes:
+    get:
+      tags:
+      - Desired state
+      operationId: listFreezes
+      security:
+      - cookieAuth: []
+      - apiTokenAuth: []
+      responses:
+        '200':
+          description: Change freezes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Freeze'
+    post:
+      tags:
+      - Desired state
+      operationId: createFreeze
+      summary: Create a change freeze (admin)
+      security:
+      - cookieAuth: []
+      - apiTokenAuth: []
+      parameters:
+      - $ref: '#/components/parameters/ZyvorRequest'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string, maxLength: 80}
+                reason: {type: string, maxLength: 240}
+                startAt: {type: string, format: date-time}
+                endAt: {type: string, format: date-time}
+                durationHours: {type: integer, minimum: 1, maximum: 8784}
+                allSites: {type: boolean}
+                siteIds: {type: array, items: {type: string}}
+                groupId: {type: string}
+                selector: {type: object, additionalProperties: {type: string}}
+      responses:
+        '201':
+          description: Freeze created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Freeze'
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+  /api/v1/freezes/{id}:
+    delete:
+      tags:
+      - Desired state
+      operationId: deleteFreeze
+      summary: Lift a change freeze (admin)
+      security:
+      - cookieAuth: []
+      - apiTokenAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/ZyvorRequest'
+      responses:
+        '200':
+          description: Freeze removed
+        '404':
+          $ref: '#/components/responses/Error'
   /api/v1/events:
     get:
       tags:
@@ -1189,6 +1316,32 @@ components:
         retries:
           type: object
           additionalProperties: {type: integer}
+        minHealthySeconds:
+          type: integer
+        soakingSites:
+          type: array
+          items: {type: string}
+        ringLabel:
+          type: string
+        ringOrder:
+          type: array
+          items: {type: string}
+        siteRings:
+          type: object
+          additionalProperties: {type: integer}
+        conflictPolicy:
+          type: string
+        supersededBy:
+          type: string
+        overrideFreeze:
+          type: boolean
+        overrideReason:
+          type: string
+        heldSites:
+          type: array
+          items: {type: string}
+        heldByFreeze:
+          type: boolean
         dailyWindow:
           type: string
         timedOutSites:
@@ -1256,6 +1409,49 @@ components:
           format: date-time
         createdBy:
           type: string
+    Freeze:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        reason: {type: string}
+        startAt: {type: string, format: date-time}
+        endAt: {type: string, format: date-time}
+        allSites: {type: boolean}
+        siteIds: {type: array, items: {type: string}}
+        groupId: {type: string}
+        selector: {type: object, additionalProperties: {type: string}}
+        createdAt: {type: string, format: date-time}
+        createdBy: {type: string}
+        active: {type: boolean}
+        expired: {type: boolean}
+        resolvedSiteIds: {type: array, items: {type: string}}
+    RolloutSites:
+      type: object
+      properties:
+        rolloutId: {type: string}
+        name: {type: string}
+        status: {type: string}
+        revisionId: {type: string}
+        counts: {type: object, additionalProperties: {type: integer}}
+        sites:
+          type: array
+          items:
+            type: object
+            properties:
+              siteId: {type: string}
+              name: {type: string}
+              siteStatus: {type: string}
+              state:
+                type: string
+                enum: [completed, soaking, applying, retry_wait, failed, timed_out, held, waiting, not_started]
+              ring: {type: string}
+              retries: {type: integer}
+              activatedAt: {type: string, format: date-time}
+              healthySince: {type: string, format: date-time}
+              retryAt: {type: string, format: date-time}
+              lastSeen: {type: string, format: date-time}
+              error: {type: string}
     Event:
       type: object
       properties:

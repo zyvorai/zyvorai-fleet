@@ -91,6 +91,32 @@ results only **[U]**.
 | Exponential rollout rate | AWS | Not built |
 | Success-percentage trigger thresholds | hawkBit | Not built; strict waves plus `advance` cover the stall case |
 
+## Round 3 (2026-11-25)
+
+Pages fetched and read: Open Cluster Management ManifestWorkReplicaSet
+(https://main--open-cluster-management.netlify.app/docs/concepts/work-distribution/manifestworkreplicaset,
+a preview build), Rancher Fleet rollout strategy
+(https://fleet.rancher.io/how-tos-for-users/rollout), GKE rollout sequencing
+(https://docs.cloud.google.com/kubernetes-engine/docs/concepts/about-rollout-sequencing),
+Octopus Deploy project deployment freezes
+(https://octopus.com/docs/deployments/deployment-freezes/project-deployment-freezes.md),
+Azure Device Update deployments
+(https://learn.microsoft.com/en-us/azure/iot-hub-device-update/device-update-deployments)
+and Memfault OTA (https://docs.memfault.com/docs/platform/ota). Summaries came
+through a page-to-text tool, so exact wording is not quoted.
+
+| Idea | Source | Decision |
+|---|---|---|
+| Success must hold for a period before moving on | OCM `minSuccessTime`, GKE soak time | Built (`minHealthySeconds`), with a heartbeat required as evidence |
+| Date-bounded, scoped deployment freeze with a reasoned override | Octopus; GKE maintenance exclusions | Built (change freezes); recurrence not built |
+| Ordered, label-selected stages | Rancher Fleet partitions, GKE custom stages, OCM decision groups | Built (`ringLabel`, `ringOrder`). Unlike Rancher, unmatched sites go last instead of being excluded |
+| One active deployment per target, newer supersedes | Azure Device Update | Built as reject by default, with `supersede` and `allow` |
+| Per-device deployment state | Azure Device Update, Memfault | Built (`/rollouts/{id}/sites`) |
+| Dynamic deployments that pick up new devices | Azure Device Update | Not built: target lists are fixed at creation for auditability |
+| Random percentage staging | Memfault | Not built: canary and rings give deterministic order |
+| Per-ring failure thresholds | Rancher `maxUnavailable` per partition | Not built; fleet-wide budgets apply |
+| Approval gate between stages | OCM, GKE | Not built; `approvalRequired` stays per rollout, pause and resume cover the manual case |
+
 ## Sources not read
 
 Open Horizon, Balena, KubeEdge, Akri, Flux and Mender's own documentation

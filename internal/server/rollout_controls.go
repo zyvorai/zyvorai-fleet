@@ -150,11 +150,10 @@ func applySiteRetries(st *model.State, ro *model.Rollout, completed, failed map[
 			ro.ActivatedAt = map[string]time.Time{}
 		}
 		ro.ActivatedAt[id] = now
+		delete(ro.HealthySince, id)
 		for i := range st.Sites {
 			if st.Sites[i].ID == id {
-				st.Sites[i].FailedRevision = ""
-				st.Sites[i].RevisionError = ""
-				st.Sites[i].DesiredRevision = ro.RevisionID
+				retrySite(&st.Sites[i], ro.RevisionID)
 				break
 			}
 		}
@@ -173,6 +172,14 @@ func applySiteRetries(st *model.State, ro *model.Rollout, completed, failed map[
 			delete(ro.RetryAt, id)
 		}
 	}
+}
+
+// retrySite hands a site the revision again with a clean failure report.
+func retrySite(site *model.Site, revisionID string) {
+	site.FailedRevision = ""
+	site.RevisionError = ""
+	site.DesiredRevision = revisionID
+	site.AwaitingSync = true
 }
 
 // advanceRollout starts the next wave immediately, ignoring the pause, the
@@ -201,8 +208,12 @@ func advanceRollout(st *model.State, ro *model.Rollout, now time.Time) error {
 	if remaining == 0 {
 		return errors.New("every site has already been activated")
 	}
+	if eligible, held := nextWaveCandidates(st, ro, now); len(eligible) == 0 && len(held) > 0 {
+		return &conflictError{msg: "every site of the next wave is under a change freeze"}
+	}
 	ro.NextWaveAt = nil
 	activateWaveNow(st, ro, now)
+	refreshHold(st, ro, now)
 	return nil
 }
 

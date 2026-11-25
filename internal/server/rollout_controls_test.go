@@ -321,7 +321,7 @@ func TestAdvanceRolloutAPI(t *testing.T) {
 	// A rollout created while its daily window is closed holds its first wave.
 	now := time.Now().UTC()
 	closed := fmt.Sprintf("%02d:00-%02d:00", (now.Hour()+2)%24, (now.Hour()+3)%24)
-	code, body = e.req("POST", "/api/v1/rollouts", map[string]any{"revisionId": rev.ID, "siteIds": []string{regs[0].SiteID}, "waveSize": 1, "dailyWindow": closed}, true)
+	code, body = e.req("POST", "/api/v1/rollouts", map[string]any{"revisionId": rev.ID, "siteIds": []string{regs[0].SiteID}, "waveSize": 1, "dailyWindow": closed, "conflictPolicy": "allow"}, true)
 	if code != 201 {
 		t.Fatalf("%d %s", code, body)
 	}

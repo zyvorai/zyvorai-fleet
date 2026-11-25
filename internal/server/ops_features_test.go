@@ -69,6 +69,10 @@ func registerOpsSite(t *testing.T, e *testEnv, name string) string {
 	return out.SiteID
 }
 
+// eventuallyTimeout bounds waits for asynchronous work. It only matters when a
+// test is already failing, so it is generous enough for a loaded machine.
+const eventuallyTimeout = time.Minute
+
 func TestAPITokenScopesAndNoCSRFCookieRequirement(t *testing.T) {
 	e := newTestEnv(t)
 	defer e.close()
@@ -85,7 +89,9 @@ func TestAPITokenScopesAndNoCSRFCookieRequirement(t *testing.T) {
 		Token string `json:"token"`
 	}](t, b)
 
-	client := &http.Client{Timeout: 2 * time.Second}
+	// No client timeout: every request fsyncs the state file, which can take
+	// seconds on a loaded disk. A real hang is bounded by `go test -timeout`.
+	client := e.server.Client()
 	if code, b = apiReq(t, client, e.server.URL, created.Token, "GET", "/api/v1/dashboard", nil); code != 200 {
 		t.Fatalf("token read %d: %s", code, b)
 	}
@@ -160,7 +166,6 @@ func TestSignedWebhookAndMutationAudit(t *testing.T) {
 	if code != 201 {
 		t.Fatalf("webhook create %d: %s", code, b)
 	}
-	time.Sleep(50 * time.Millisecond) // let the creation-triggered dispatcher release its lock
 	code, b = e.req("POST", "/api/v1/api-tokens", map[string]any{"name": "webhook-trigger", "role": "viewer", "scopes": []string{"read"}}, true)
 	if code != 201 {
 		t.Fatalf("token create %d: %s", code, b)
@@ -176,7 +181,7 @@ func TestSignedWebhookAndMutationAudit(t *testing.T) {
 		if err := json.Unmarshal(got.body, &envelope); err != nil || envelope.Type != "api_token.created" {
 			t.Fatalf("unexpected webhook payload: %s", got.body)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(eventuallyTimeout):
 		t.Fatal("timed out waiting for webhook delivery")
 	}
 

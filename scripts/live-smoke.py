@@ -11,6 +11,9 @@ BASE=f'http://127.0.0.1:{PORT}'
 server_log=open(TMP/'server.log','w')
 agent_log=open(TMP/'agent.log','w')
 server=None; agent=None
+# Every request fsyncs state, which takes seconds on a loaded disk. These bounds
+# only have to catch a real hang; each wait returns as soon as it succeeds.
+SLOW=60
 
 def start_server():
     global server, server_log
@@ -19,19 +22,19 @@ def start_server():
         'ZYVOR_FLEET_SESSION_SECRET':'live-smoke-session-secret-0123456789abcdef0123456789',
     })
     server=subprocess.Popen([str(ROOT/'bin/fleetd'),'--demo','--listen',f'127.0.0.1:{PORT}','--data',str(TMP/'state.json')],cwd=ROOT,env=env,stdout=server_log,stderr=subprocess.STDOUT)
-    wait_url('/healthz', expect=200, timeout=10)
+    wait_url('/healthz', expect=200)
 
-def wait_url(path, expect=200, timeout=10):
+def wait_url(path, expect=200, timeout=SLOW):
     end=time.time()+timeout
     while time.time()<end:
         try:
-            with urllib.request.urlopen(BASE+path,timeout=1) as r:
+            with urllib.request.urlopen(BASE+path,timeout=SLOW) as r:
                 if r.status==expect: return
         except Exception: pass
         time.sleep(.1)
     raise RuntimeError(f'timeout waiting {path}')
 
-def wait_for(fn, timeout=15, label='condition'):
+def wait_for(fn, timeout=SLOW, label='condition'):
     end=time.time()+timeout; last=None
     while time.time()<end:
         try:
@@ -48,7 +51,7 @@ def api(method,path,body=None):
     if data is not None: req.add_header('Content-Type','application/json')
     if method not in ('GET','HEAD'): req.add_header('X-Zyvor-Request','1')
     try:
-        with opener.open(req,timeout=4) as r:
+        with opener.open(req,timeout=SLOW) as r:
             raw=r.read(); return r.status, json.loads(raw) if raw else None
     except urllib.error.HTTPError as e:
         raw=e.read().decode(); raise RuntimeError(f'{method} {path}: {e.code} {raw}')
@@ -93,24 +96,24 @@ try:
     manifest2='apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: edge-config\ndata:\n  release: v2\n'
     rev2=create_revision('bad-canary',manifest2,{'type':'http','url':'http://127.0.0.1:1/healthz','timeoutSeconds':1,'graceSeconds':0})
     ro2=create_rollout('guarded canary',rev2,group_id=group['id'],auto=True)
-    failed=wait_for(lambda: next((r for r in rollouts() if r['id']==ro2['id'] and r['status']=='failed' and r.get('rolledBack')),None),timeout=15,label='automatic rollback')
-    restored=wait_for(lambda: next((s for s in sites() if s['id']==site_id and s.get('desiredRevision')==rev1['id'] and s.get('appliedRevision')==rev1['id']),None),timeout=15,label='rollback re-applied')
+    failed=wait_for(lambda: next((r for r in rollouts() if r['id']==ro2['id'] and r['status']=='failed' and r.get('rolledBack')),None),label='automatic rollback')
+    restored=wait_for(lambda: next((s for s in sites() if s['id']==site_id and s.get('desiredRevision')==rev1['id'] and s.get('appliedRevision')==rev1['id']),None),label='rollback re-applied')
     wait_for(lambda: manifest_path.exists() and 'release: v1' in manifest_path.read_text(),label='rollback manifest restored')
 
     # WAN/control-plane outage: delete managed state and require cached local revision to restore it.
-    server.send_signal(signal.SIGTERM); server.wait(timeout=5); server=None
+    server.send_signal(signal.SIGTERM); server.wait(timeout=SLOW); server=None
     time.sleep(.8)
     manifest_path.unlink()
-    wait_for(lambda: manifest_path.exists() and 'release: v1' in manifest_path.read_text(),timeout=6,label='offline cached drift repair')
+    wait_for(lambda: manifest_path.exists() and 'release: v1' in manifest_path.read_text(),label='offline cached drift repair')
 
     # Reconnect with exact same persisted control-plane state.
     server_log.flush(); server_log.close(); server_log=open(TMP/'server-restart.log','w')
     start_server(); login()
-    wait_for(lambda: next((s for s in sites() if s['id']==site_id and s.get('status') in ('online','degraded')),None),timeout=10,label='agent reconnect')
+    wait_for(lambda: next((s for s in sites() if s['id']==site_id and s.get('status') in ('online','degraded')),None),label='agent reconnect')
     events=api('GET','/api/v1/events?limit=100')[1]
     kinds=[e.get('kind') for e in events]
-    wait_for(lambda: ('controlplane.unreachable' in [e.get('kind') for e in api('GET','/api/v1/events?limit=100')[1]] and 'controlplane.reconnected' in [e.get('kind') for e in api('GET','/api/v1/events?limit=100')[1]]),timeout=10,label='queued reconnect events')
-    metrics=urllib.request.urlopen(BASE+'/metrics',timeout=2).read().decode()
+    wait_for(lambda: ('controlplane.unreachable' in [e.get('kind') for e in api('GET','/api/v1/events?limit=100')[1]] and 'controlplane.reconnected' in [e.get('kind') for e in api('GET','/api/v1/events?limit=100')[1]]),label='queued reconnect events')
+    metrics=urllib.request.urlopen(BASE+'/metrics',timeout=SLOW).read().decode()
     assert 'zyvor_fleet_sites' in metrics
 
     print(json.dumps({

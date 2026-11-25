@@ -121,6 +121,10 @@ A rollout has resolved target sites, strict wave size, optional inter-wave pause
 6. Successful waves honor `pauseSeconds` before the next wave. Operators can pause, resume, abort, retry or manually roll back.
 7. The rollout completes only when all targets are terminal within the configured failure budget.
 8. An optional `canarySize` sizes the first wave only. An optional `siteTimeoutSeconds` fails an activated site that has not applied the revision in time, so one offline site cannot stall a wave forever; the timeout is control-plane accounting and does not change what the site keeps running.
+9. With `minHealthySeconds`, an activated site is terminal only after a later heartbeat confirms it stayed applied and healthy.
+10. With `ringLabel`/`ringOrder`, a wave never spans two rings. An active change freeze removes covered sites from wave candidates; it changes nothing on a site.
+11. By default a site belongs to at most one unfinished rollout (`conflictPolicy` reject, supersede or allow).
+12. After a retry, a failure report is ignored until the site has synced again, so a report of the replaced attempt cannot consume the retry.
 
 Revisions carry a sha256 content digest of their workloads. The agent refuses to cache or apply a revision whose body does not match it. This is an integrity check, not a signature (see docs/ROLLOUT_SAFETY.md).
 

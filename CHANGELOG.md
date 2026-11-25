@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Rollout controls round 3 (see docs/RESEARCH.md)
+
+- **Behaviour change:** creating a rollout whose sites belong to an unfinished rollout (running, scheduled, paused or pending approval, with overlapping time windows) now returns `409` with the conflicting rollouts. `conflictPolicy` selects `reject` (default), `supersede` (abort the older ones) or `allow` (previous behaviour). `retry` of a failed rollout is refused the same way. Plans report `conflicts`.
+- Healthy soak: `minHealthySeconds` (max 86400). An activated site completes only after staying applied without reporting the revision failed, confirmed by a heartbeat at least that long after it was first healthy; `soakingSites` and `rollout.site_unhealthy` report progress.
+- Change freezes: `GET|POST /api/v1/freezes`, `DELETE /api/v1/freezes/{id}` (admin), `fleetctl freezes|freeze-create|freeze-delete` and a console section. Covered sites are not moved to a new revision; rollouts report `heldSites`, `heldByFreeze` and `rollout.held`. Admin-only `overrideFreeze` with a required reason. A site group used by an unexpired freeze cannot be deleted.
+- Ring-ordered waves: `ringLabel` and `ringOrder` run the rollout ring by ring; a wave never spans rings, unlisted sites go last, and plans report `rings`.
+- Per-site status: `GET /api/v1/rollouts/{id}/sites` and `fleetctl rollout-sites ID [json]`.
+- Fix: a heartbeat describing the attempt that a retry had just replaced could consume that retry. After a retry, failure reports are ignored until the site has synced again.
+- Tests: end-to-end tests drive the real agent against the real control plane (re-apply after a server-side retry, retry exhaustion, stale report, soak); fleetctl commands are tested against the real handler.
+- Fix: `TestAPITokenScopesAndNoCSRFCookieRequirement` no longer uses a 2s client timeout, and the webhook test no longer sleeps or waits only 2s.
+- `make qualify` allows 30 minutes for each Go step and the live smoke (was 2 to 5), and `scripts/live-smoke.py` allows 60 seconds per request and wait (was 1 to 15); both timed out on a loaded host.
+- CI: Pages deploy split into build and deploy jobs (the last deploy failed with `No artifacts named "github-pages"` right after a successful upload). Node 24 to 26 (LTS), Python 3.14 to 3.15. Go 1.27.4, the Alpine 3.24 build image, GitHub Actions majors, govulncheck, kubeconform, mkdocs and mkdocs-material were already the latest releases on 2026-11-25; the module still has no third-party dependencies.
+
 ### Rollout controls round 2 (see docs/RESEARCH.md)
 
 - Convergence report: `GET /api/v1/convergence[?revisionId=]` and `fleetctl convergence [REV] [json]` (targeted, applied, failed, pending, offline, stale, converged percent; site ids for a single revision).

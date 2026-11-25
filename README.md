@@ -47,6 +47,7 @@
 
 | Release | What landed |
 |---|---|
+| **Unreleased** | Healthy soak before success, change freezes, ring-ordered waves, one-rollout-per-site conflict policy (default: reject with `409`), per-site rollout status |
 | **Unreleased** | Rollout controls: convergence report, percentage failure budget, bounded per-site retries, UTC daily window, manual wave advance |
 | **Unreleased** | Rollout safety: per-site apply timeout, canary wave size, revision diff with plan change summary, and sha256 revision digests the agent verifies (integrity, not signatures); research in `docs/RESEARCH.md` |
 | **Unreleased** | OTA devices roll out in canary waves instead of a single assignment, pausing when failure, rollback or offline thresholds trip, with a per-device timeline and recovery guidance |
@@ -191,6 +192,9 @@ fleetctl rollout-plan GROUP_ID [REVISION_ID]   # with a revision: per-site chang
 fleetctl revision-diff REV_OLD REV_NEW
 fleetctl convergence [REV_ID]            # targeted/applied/failed/stale per revision
 fleetctl rollout-advance ROLLOUT_ID      # start the next wave now
+fleetctl rollout-sites ROLLOUT_ID        # per-site state, ring, retries, error
+fleetctl freeze-create "Peak season" 72 env=production   # change freeze (admin); also: all, group:ID, sites:ID,ID
+fleetctl freezes | freeze-delete FREEZE_ID
 fleetctl site-maintenance SITE_ID on "scheduled service"
 fleetctl api-token-create github-ci operator read,rollouts:write
 fleetctl enroll-token "Factory install"
@@ -272,7 +276,7 @@ See [SECURITY.md](SECURITY.md).
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Protocol and failure model |
 | [docs/PRODUCTION.md](docs/PRODUCTION.md) | Production runbook |
 | [docs/OTA_CONTRACT.md](docs/OTA_CONTRACT.md) | OTA assignment + events |
-| [docs/ROLLOUT_SAFETY.md](docs/ROLLOUT_SAFETY.md) | Digests, diffs, canary, site timeouts |
+| [docs/ROLLOUT_SAFETY.md](docs/ROLLOUT_SAFETY.md) | Digests, diffs, canary, timeouts, soak, freezes, rings, conflicts |
 | [docs/RESEARCH.md](docs/RESEARCH.md) | Field research and ranked ideas |
 | [docs/openapi.yaml](docs/openapi.yaml) | REST API |
 

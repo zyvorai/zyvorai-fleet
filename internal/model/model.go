@@ -61,6 +61,9 @@ type Site struct {
 	RevisionError     string            `json:"revisionError,omitempty"`
 	WorkloadHealth    []WorkloadHealth  `json:"workloadHealth,omitempty"`
 	IntegrationState  map[string]string `json:"integrationState,omitempty"`
+	// AwaitingSync is set when a rollout retries this site and cleared by its
+	// next sync. Until then a failure report describes the previous attempt.
+	AwaitingSync bool `json:"awaitingSync,omitempty"`
 }
 
 type SiteView struct {
@@ -220,26 +223,44 @@ type Rollout struct {
 	Retries           map[string]int       `json:"retries,omitempty"`
 	RetryAt           map[string]time.Time `json:"retryAt,omitempty"`
 	// DailyWindow ("HH:MM-HH:MM", UTC) limits when new waves may start.
-	DailyWindow       string               `json:"dailyWindow,omitempty"`
-	ActivatedAt       map[string]time.Time `json:"activatedAt,omitempty"`
-	TimedOutSites     []string             `json:"timedOutSites,omitempty"`
-	AutoRollback      bool                 `json:"autoRollback"`
-	ApprovalRequired  bool                 `json:"approvalRequired"`
-	ApprovedAt        *time.Time           `json:"approvedAt,omitempty"`
-	StartAt           *time.Time           `json:"startAt,omitempty"`
-	EndAt             *time.Time           `json:"endAt,omitempty"`
-	NextWaveAt        *time.Time           `json:"nextWaveAt,omitempty"`
-	CurrentWave       int                  `json:"currentWave"`
-	SiteIDs           []string             `json:"siteIds"`
-	ActivatedSites    []string             `json:"activatedSites,omitempty"`
-	CompletedSites    []string             `json:"completedSites,omitempty"`
-	FailedSites       []string             `json:"failedSites,omitempty"`
-	PreviousRevisions map[string]string    `json:"previousRevisions,omitempty"`
-	RolledBack        bool                 `json:"rolledBack,omitempty"`
-	CreatedAt         time.Time            `json:"createdAt"`
-	CreatedBy         string               `json:"createdBy"`
-	UpdatedAt         time.Time            `json:"updatedAt"`
-	CompletedAt       *time.Time           `json:"completedAt,omitempty"`
+	DailyWindow   string               `json:"dailyWindow,omitempty"`
+	ActivatedAt   map[string]time.Time `json:"activatedAt,omitempty"`
+	TimedOutSites []string             `json:"timedOutSites,omitempty"`
+	// MinHealthySeconds, when >0, is how long an activated site must stay
+	// applied and healthy before it counts as completed.
+	MinHealthySeconds int                  `json:"minHealthySeconds,omitempty"`
+	HealthySince      map[string]time.Time `json:"healthySince,omitempty"`
+	SoakingSites      []string             `json:"soakingSites,omitempty"`
+	// RingLabel and RingOrder run the rollout ring by ring; SiteRings holds
+	// each site's ring index, fixed at creation (len(RingOrder) = unlisted).
+	RingLabel string         `json:"ringLabel,omitempty"`
+	RingOrder []string       `json:"ringOrder,omitempty"`
+	SiteRings map[string]int `json:"siteRings,omitempty"`
+	// OverrideFreeze lets an admin move sites despite a change freeze.
+	OverrideFreeze bool     `json:"overrideFreeze,omitempty"`
+	OverrideReason string   `json:"overrideReason,omitempty"`
+	HeldSites      []string `json:"heldSites,omitempty"`
+	HeldByFreeze   bool     `json:"heldByFreeze,omitempty"`
+	// ConflictPolicy records how overlap with other rollouts was resolved.
+	ConflictPolicy    string            `json:"conflictPolicy,omitempty"`
+	SupersededBy      string            `json:"supersededBy,omitempty"`
+	AutoRollback      bool              `json:"autoRollback"`
+	ApprovalRequired  bool              `json:"approvalRequired"`
+	ApprovedAt        *time.Time        `json:"approvedAt,omitempty"`
+	StartAt           *time.Time        `json:"startAt,omitempty"`
+	EndAt             *time.Time        `json:"endAt,omitempty"`
+	NextWaveAt        *time.Time        `json:"nextWaveAt,omitempty"`
+	CurrentWave       int               `json:"currentWave"`
+	SiteIDs           []string          `json:"siteIds"`
+	ActivatedSites    []string          `json:"activatedSites,omitempty"`
+	CompletedSites    []string          `json:"completedSites,omitempty"`
+	FailedSites       []string          `json:"failedSites,omitempty"`
+	PreviousRevisions map[string]string `json:"previousRevisions,omitempty"`
+	RolledBack        bool              `json:"rolledBack,omitempty"`
+	CreatedAt         time.Time         `json:"createdAt"`
+	CreatedBy         string            `json:"createdBy"`
+	UpdatedAt         time.Time         `json:"updatedAt"`
+	CompletedAt       *time.Time        `json:"completedAt,omitempty"`
 }
 
 type SiteGroup struct {
@@ -250,6 +271,22 @@ type SiteGroup struct {
 	SiteIDs     []string          `json:"siteIds,omitempty"`
 	CreatedAt   time.Time         `json:"createdAt"`
 	CreatedBy   string            `json:"createdBy"`
+}
+
+// Freeze is a change freeze: while active, rollouts do not move a covered site
+// to a new revision. Exactly one of AllSites or a scope is set.
+type Freeze struct {
+	ID        string            `json:"id"`
+	Name      string            `json:"name"`
+	Reason    string            `json:"reason,omitempty"`
+	StartAt   time.Time         `json:"startAt"`
+	EndAt     time.Time         `json:"endAt"`
+	AllSites  bool              `json:"allSites,omitempty"`
+	SiteIDs   []string          `json:"siteIds,omitempty"`
+	GroupID   string            `json:"groupId,omitempty"`
+	Selector  map[string]string `json:"selector,omitempty"`
+	CreatedAt time.Time         `json:"createdAt"`
+	CreatedBy string            `json:"createdBy"`
 }
 
 type Command struct {
@@ -349,4 +386,5 @@ type State struct {
 	OTADevices       []OTADevice       `json:"otaDevices,omitempty"`
 	OTACohorts       []OTACohort       `json:"otaCohorts,omitempty"`
 	OTARollouts      []OTARollout      `json:"otaRollouts,omitempty"`
+	Freezes          []Freeze          `json:"freezes,omitempty"`
 }

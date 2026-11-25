@@ -136,6 +136,33 @@ func main() {
 		}
 		action := strings.TrimPrefix(cmd, "rollout-")
 		printReq(c, *server, "POST", "/api/v1/rollouts/"+flag.Arg(1)+"/"+action, nil)
+	case "rollout-sites":
+		if flag.NArg() < 2 {
+			fail(fmt.Errorf("rollout-sites requires ROLLOUT_ID"))
+		}
+		path := "/api/v1/rollouts/" + url.PathEscape(flag.Arg(1)) + "/sites"
+		if flag.NArg() > 2 && flag.Arg(2) == "json" {
+			printReq(c, *server, "GET", path, nil)
+			return
+		}
+		printTable(c, *server, path, formatRolloutSites)
+	case "freezes":
+		if flag.NArg() > 1 && flag.Arg(1) == "json" {
+			printReq(c, *server, "GET", "/api/v1/freezes", nil)
+			return
+		}
+		printTable(c, *server, "/api/v1/freezes", formatFreezes)
+	case "freeze-create":
+		body, err := freezeCreateBody(flag.Args()[1:])
+		if err != nil {
+			fail(err)
+		}
+		printReq(c, *server, "POST", "/api/v1/freezes", body)
+	case "freeze-delete":
+		if flag.NArg() < 2 {
+			fail(fmt.Errorf("freeze-delete requires FREEZE_ID"))
+		}
+		printReq(c, *server, "DELETE", "/api/v1/freezes/"+url.PathEscape(flag.Arg(1)), nil)
 	case "site-maintenance":
 		if flag.NArg() < 3 || (flag.Arg(2) != "on" && flag.Arg(2) != "off") {
 			fail(fmt.Errorf("site-maintenance requires SITE_ID on|off [reason]"))
@@ -186,6 +213,19 @@ func login(c *http.Client, server, email, password string) error {
 	}
 	return nil
 }
+
+// printTable fetches path and prints it with the given text renderer.
+func printTable(c *http.Client, server, path string, format func([]byte) (string, error)) {
+	b, err := getJSON(c, server, path)
+	if err != nil {
+		fail(err)
+	}
+	text, err := format(b)
+	if err != nil {
+		fail(err)
+	}
+	fmt.Print(text)
+}
 func printReq(c *http.Client, server, method, path string, body any) {
 	var r io.Reader
 	if body != nil {
@@ -220,7 +260,7 @@ func printReq(c *http.Client, server, method, path string, body any) {
 	}
 }
 func usage() {
-	fmt.Fprintln(os.Stderr, "fleetctl [flags] <version|status [json]|sites|events|audit|revisions|rollouts|groups|webhooks|api-tokens|group-create NAME selector|rollout-plan GROUP_ID [REVISION_ID]|revision-diff FROM|- TO|rollout-pause ID|rollout-resume ID|rollout-abort ID|rollout-approve ID|rollout-rollback ID|rollout-retry ID|rollout-advance ID|convergence [REVISION_ID] [json]|site-maintenance SITE_ID on|off [reason]|api-token-create NAME ROLE scope[,scope]|enroll-token [name]>")
+	fmt.Fprintln(os.Stderr, "fleetctl [flags] <version|status [json]|sites|events|audit|revisions|rollouts|groups|webhooks|api-tokens|group-create NAME selector|rollout-plan GROUP_ID [REVISION_ID]|revision-diff FROM|- TO|rollout-pause ID|rollout-resume ID|rollout-abort ID|rollout-approve ID|rollout-rollback ID|rollout-retry ID|rollout-advance ID|rollout-sites ID [json]|freezes [json]|freeze-create NAME HOURS all|group:ID|sites:ID,ID|key=value [reason]|freeze-delete ID|convergence [REVISION_ID] [json]|site-maintenance SITE_ID on|off [reason]|api-token-create NAME ROLE scope[,scope]|enroll-token [name]>")
 }
 func fail(err error) { fmt.Fprintln(os.Stderr, "fleetctl:", err); os.Exit(1) }
 func envOr(k, v string) string {
